@@ -21,7 +21,10 @@ const idsFromInteractions = ({ interactions }) => {
             interactionTypeAndAddress: interaction.interactionTypeAndAddress
         });
         if (interactionType === ERC20_WRAP || interactionType === ERC20_UNWRAP) {
-            interactionIds.push(address)
+            interactionIds.push(calculateWrappedTokenId({
+                address: address,
+                id: 0
+            }))
         } else if (
             interactionType === ERC721_WRAP
             || interactionType === ERC721_UNWRAP

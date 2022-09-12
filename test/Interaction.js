@@ -42,7 +42,7 @@ describe("Interaction Tests", () => {
             })
 
             expect(
-                await ocean.balanceOf(alice.address, token.address)
+                await ocean.balanceOf(alice.address, shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 }))
             ).to.equal(0)
 
             expect(
@@ -50,7 +50,7 @@ describe("Interaction Tests", () => {
             ).to.have.property('hash')
 
             expect(
-                await ocean.balanceOf(alice.address, token.address)
+                await ocean.balanceOf(alice.address, shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 }))
             ).to.equal(
                 shellV2.utils.numberWithFixedDecimals({
                     number: "1",
@@ -69,10 +69,10 @@ describe("Interaction Tests", () => {
                     amount: "1"
                 })
             ]
-            const ids = [token.address]
+            const ids = [shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 })]
 
             expect(
-                await ocean.balanceOf(alice.address, token.address)
+                await ocean.balanceOf(alice.address, shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 }))
             ).to.equal(
                 shellV2.utils.numberWithFixedDecimals({
                     number: "1",
@@ -84,7 +84,7 @@ describe("Interaction Tests", () => {
             ).to.have.property('hash')
 
             expect(
-                await ocean.balanceOf(alice.address, token.address)
+                await ocean.balanceOf(alice.address, shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 }))
             ).to.equal(
                 shellV2.utils.numberWithFixedDecimals({
                     number: "2",
@@ -152,7 +152,12 @@ describe("Interaction Tests", () => {
 
         it("Alice deploys and LPs into pool", async () => {
             const constantSumContract = await ethers.getContractFactory("ConstantSum", alice)
-            const poolA = await constantSumContract.deploy(tokens[0].address, tokens[1].address, ocean.address)
+            const poolA = await constantSumContract.deploy(
+                shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                ocean.address,
+                transferAmount.mul(2)
+            )
             const shellA = await poolA.lpTokenId()
 
             // Pool won't swap with anyone but the Ocean.
@@ -173,8 +178,8 @@ describe("Interaction Tests", () => {
                     signer: alice,
                     interaction: shellV2.interactions.computeOutputAmount({
                         address: poolA.address,
-                        inputToken: tokens[0].address,
-                        outputToken: tokens[0].address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
                         specifiedAmount: 1,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     })
@@ -182,34 +187,117 @@ describe("Interaction Tests", () => {
             ).to.be.revertedWith("Invalid ComputeType")
 
             expect(await ocean.tokensToPrimitives(shellA)).to.equal(poolA.address)
+            const LP_INTERACTIONS = [
+                shellV2.interactions.computeOutputAmount({
+                    address: poolA.address,
+                    inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                    outputToken: shellA,
+                    specifiedAmount: transferAmount,
+                    metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                }),
+                shellV2.interactions.computeOutputAmount({
+                    address: poolA.address,
+                    inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                    outputToken: shellA,
+                    specifiedAmount: transferAmount,
+                    metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                }),
+                shellV2.interactions.wrapERC20({
+                    address: tokens[0].address,
+                    amount: ethers.constants.MaxUint256
+                }),
+                shellV2.interactions.wrapERC20({
+                    address: tokens[1].address,
+                    amount: ethers.constants.MaxUint256
+                })
+            ]
+
+            await expect(
+                shellV2.executeInteractions({
+                    ocean,
+                    signer: charlotte,
+                    interactions: LP_INTERACTIONS
+                })
+            ).to.be.reverted;
+
+            await expect(
+                shellV2.executeInteraction({
+                    ocean,
+                    signer: alice,
+                    interaction: shellV2.interactions.computeOutputAmount({
+                        address: poolA.address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                        specifiedAmount: ethers.constants.MaxUint256,
+                        metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                    })
+                })
+            ).to.be.reverted
+
+            await expect(
+                shellV2.executeInteraction({
+                    ocean,
+                    signer: alice,
+                    interaction: shellV2.interactions.computeInputAmount({
+                        address: poolA.address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                        outputToken: shellA,
+                        specifiedAmount: ethers.constants.MaxUint256,
+                        metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                    })
+                })
+            ).to.be.reverted
+
+            await expect(
+                shellV2.executeInteractions({
+                    ocean,
+                    signer: alice,
+                    interactions: [
+                        shellV2.interactions.computeOutputAmount({
+                            address: poolA.address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                            outputToken: shellA,
+                            specifiedAmount: transferAmount,
+                            metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                        }),
+                        shellV2.interactions.computeOutputAmount({
+                            address: poolA.address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                            outputToken: shellA,
+                            specifiedAmount: transferAmount,
+                            metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                        }),
+                    ]
+                })
+            ).to.be.reverted
+
+            await expect(
+                shellV2.executeInteractions({
+                    ocean,
+                    signer: alice,
+                    interactions: [
+                        shellV2.interactions.computeOutputAmount({
+                            address: poolA.address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                            outputToken: shellA,
+                            specifiedAmount: transferAmount,
+                            metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                        }),
+                        shellV2.interactions.computeOutputAmount({
+                            address: poolA.address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                            outputToken: shellA,
+                            specifiedAmount: transferAmount,
+                            metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                        }),
+                    ]
+                })
+            ).to.be.reverted
             // LP into poolA, wrap necessary tokens
             await shellV2.executeInteractions({
                 ocean,
                 signer: alice,
-                interactions: [
-                    shellV2.interactions.computeOutputAmount({
-                        address: poolA.address,
-                        inputToken: tokens[0].address,
-                        outputToken: shellA,
-                        specifiedAmount: transferAmount,
-                        metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
-                    }),
-                    shellV2.interactions.computeOutputAmount({
-                        address: poolA.address,
-                        inputToken: tokens[1].address,
-                        outputToken: shellA,
-                        specifiedAmount: transferAmount,
-                        metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
-                    }),
-                    shellV2.interactions.wrapERC20({
-                        address: tokens[0].address,
-                        amount: ethers.constants.MaxUint256
-                    }),
-                    shellV2.interactions.wrapERC20({
-                        address: tokens[1].address,
-                        amount: ethers.constants.MaxUint256
-                    })
-                ]
+                interactions: LP_INTERACTIONS
             })
             const shellABalance = await ocean.balanceOf(alice.address, shellA)
             expect(shellABalance).to.equal(transferAmount.mul(2))
@@ -217,7 +305,12 @@ describe("Interaction Tests", () => {
             expect(await poolA.getTokenSupply(shellA)).to.equal(shellABalance)
 
 
-            const poolB = await constantSumContract.deploy(tokens[2].address, shellA, ocean.address)
+            const poolB = await constantSumContract.deploy(
+                shellV2.utils.calculateWrappedTokenId({ address: tokens[2].address, id: 0 }),
+                shellA,
+                ocean.address,
+                transferAmount.mul(2)
+            )
             const shellB = await poolB.lpTokenId()
             expect(await ocean.tokensToPrimitives(shellB)).to.equal(poolB.address)
 
@@ -231,14 +324,14 @@ describe("Interaction Tests", () => {
                     }),
                     shellV2.interactions.computeOutputAmount({
                         address: poolB.address,
-                        inputToken: tokens[2].address,
+                        inputToken: shellA,
                         outputToken: shellB,
                         specifiedAmount: transferAmount,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
                     shellV2.interactions.computeOutputAmount({
                         address: poolB.address,
-                        inputToken: shellA,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[2].address, id: 0 }),
                         outputToken: shellB,
                         specifiedAmount: transferAmount,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
@@ -248,6 +341,7 @@ describe("Interaction Tests", () => {
             expect(await ocean.balanceOf(alice.address, shellB)).to.equal(transferAmount.mul(2))
             pools = [poolA, poolB]
         })
+
 
         it("Charlotte does a forward swap", async () => {
             await shellV2.executeInteractions({
@@ -260,8 +354,8 @@ describe("Interaction Tests", () => {
                     }),
                     shellV2.interactions.computeOutputAmount({
                         address: pools[0].address,
-                        inputToken: tokens[0].address,
-                        outputToken: tokens[1].address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
@@ -295,8 +389,8 @@ describe("Interaction Tests", () => {
                     }),
                     shellV2.interactions.computeInputAmount({
                         address: pools[0].address,
-                        inputToken: tokens[1].address,
-                        outputToken: tokens[0].address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
@@ -340,7 +434,10 @@ describe("Interaction Tests", () => {
             })
             const initialBalances = await ocean.balanceOfBatch(
                 [charlotte.address, charlotte.address],
-                [tokens[0].address, tokens[1].address]
+                [
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 })
+                ]
             )
             initialBalances.map((balance) => {
                 expect(balance).to.equal(shellV2.utils.numberWithFixedDecimals({
@@ -364,7 +461,10 @@ describe("Interaction Tests", () => {
             })
             const finalBalances = await ocean.balanceOfBatch(
                 [charlotte.address, charlotte.address],
-                [tokens[0].address, tokens[1].address]
+                [
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 })
+                ]
             )
             finalBalances.map((balance) => {
                 expect(balance).to.equal(0)
@@ -381,20 +481,34 @@ describe("Interaction Tests", () => {
                     shellV2.interactions.computeOutputAmount({
                         address: pools[0].address,
                         inputToken: shellA,
-                        outputToken: tokens[0].address,
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
                         specifiedAmount: 1,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
                     shellV2.interactions.computeOutputAmount({
                         address: pools[0].address,
                         inputToken: shellA,
-                        outputToken: tokens[1].address,
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                        specifiedAmount: 1,
+                        metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                    }),
+                    shellV2.interactions.computeInputAmount({
+                        address: pools[0].address,
+                        inputToken: shellA,
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                        specifiedAmount: 1,
+                        metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                    }),
+                    shellV2.interactions.computeInputAmount({
+                        address: pools[0].address,
+                        inputToken: shellA,
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
                         specifiedAmount: 1,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
                 ]
             })
-            expect(await ocean.balanceOf(alice.address, shellA)).to.equal(ethers.BigNumber.from(initial).sub(2))
+            expect(await ocean.balanceOf(alice.address, shellA)).to.equal(ethers.BigNumber.from(initial).sub(4))
 
         })
 
@@ -406,8 +520,8 @@ describe("Interaction Tests", () => {
                     interactions: [
                         shellV2.interactions.computeInputAmount({
                             address: pools[0].address,
-                            inputToken: tokens[0].address,
-                            outputToken: tokens[1].address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                            outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
                             specifiedAmount: shellV2.utils.numberWithFixedDecimals({
                                 number: "1",
                                 decimals
@@ -431,8 +545,8 @@ describe("Interaction Tests", () => {
                     interactions: [
                         shellV2.interactions.computeInputAmount({
                             address: pools[0].address,
-                            inputToken: tokens[0].address,
-                            outputToken: tokens[1].address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                            outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
                             specifiedAmount: shellV2.utils.numberWithFixedDecimals({
                                 number: "1",
                                 decimals
@@ -480,7 +594,7 @@ describe("Interaction Tests", () => {
                         })
                     ]
                 })
-            ).to.be.revertedWith("ERC1155: burn amount exceeds balance")
+            ).to.be.revertedWith("burn amount exceeds balance")
         })
 
         it("Cannot unwrap multiple tokens not owned", async () => {
@@ -499,7 +613,7 @@ describe("Interaction Tests", () => {
                         }),
                     ]
                 })
-            ).to.be.revertedWith("ERC1155: burn amount exceeds balance")
+            ).to.be.revertedWith("burn amount exceeds balance")
         })
 
         it("Charlotte does a backwards meta-swap with a mint", async () => {
@@ -523,14 +637,14 @@ describe("Interaction Tests", () => {
                     shellV2.interactions.computeInputAmount({
                         address: pools[1].address,
                         inputToken: shellA,
-                        outputToken: tokens[2].address,
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[2].address, id: 0 }),
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
 
                     shellV2.interactions.computeInputAmount({
                         address: pools[0].address,
-                        inputToken: tokens[0].address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
                         outputToken: shellA,
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
@@ -575,14 +689,14 @@ describe("Interaction Tests", () => {
                     shellV2.interactions.computeInputAmount({
                         address: pools[0].address,
                         inputToken: shellA,
-                        outputToken: tokens[0].address,
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
 
                     shellV2.interactions.computeInputAmount({
                         address: pools[1].address,
-                        inputToken: tokens[2].address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[2].address, id: 0 }),
                         outputToken: shellA,
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
@@ -631,14 +745,14 @@ describe("Interaction Tests", () => {
                     }),
                     shellV2.interactions.computeOutputAmount({
                         address: pools[0].address,
-                        inputToken: tokens[0].address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
                         outputToken: shellA,
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
                     shellV2.interactions.computeOutputAmount({
                         address: pools[0].address,
-                        inputToken: tokens[1].address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
                         outputToken: shellA,
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
@@ -646,7 +760,7 @@ describe("Interaction Tests", () => {
                     shellV2.interactions.computeOutputAmount({
                         address: pools[1].address,
                         inputToken: shellA,
-                        outputToken: tokens[2].address,
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[2].address, id: 0 }),
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
@@ -698,7 +812,7 @@ describe("Interaction Tests", () => {
                     }),
                     shellV2.interactions.computeOutputAmount({
                         address: pools[1].address,
-                        inputToken: tokens[2].address,
+                        inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[2].address, id: 0 }),
                         outputToken: shellA,
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
@@ -706,14 +820,14 @@ describe("Interaction Tests", () => {
                     shellV2.interactions.computeOutputAmount({
                         address: pools[0].address,
                         inputToken: shellA,
-                        outputToken: tokens[1].address,
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
                         specifiedAmount: splitSwapAmount,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
                     shellV2.interactions.computeOutputAmount({
                         address: pools[0].address,
                         inputToken: shellA,
-                        outputToken: tokens[0].address,
+                        outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
                         specifiedAmount: ethers.constants.MaxUint256,
                         metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
                     }),
@@ -742,6 +856,121 @@ describe("Interaction Tests", () => {
             expect(
                 finalCharlotteBalances[2]
             ).to.equal(initialCharlotteBalances[2].sub(swapAmount))
+        })
+
+        it("Charlotte uses slippage protection", async () => {
+            const ten = ethers.utils.parseUnits("10");
+            await expect(
+                shellV2.executeInteractions({
+                    ocean,
+                    signer: charlotte,
+                    interactions: [
+                        shellV2.interactions.wrapERC20({
+                            address: tokens[0].address,
+                            amount: ten
+                        }),
+                        shellV2.interactions.computeOutputAmount({
+                            address: pools[0].address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                            outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                            specifiedAmount: ethers.constants.MaxUint256,
+                            metadata: ethers.constants.MaxUint256
+                        }),
+                        shellV2.interactions.unwrapERC20({
+                            address: tokens[1].address,
+                            amount: ethers.constants.MaxUint256
+                        })
+                    ]
+                })
+            ).to.be.revertedWith('Slippage limit exceeded');
+
+            await expect(
+                shellV2.executeInteractions({
+                    ocean,
+                    signer: charlotte,
+                    interactions: [
+                        shellV2.interactions.unwrapERC20({
+                            address: tokens[0].address,
+                            amount: ten
+                        }),
+                        shellV2.interactions.computeInputAmount({
+                            address: pools[0].address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                            outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                            specifiedAmount: ethers.constants.MaxUint256,
+                            metadata: ethers.utils.hexZeroPad(ethers.utils.hexlify(1), 32)
+                        }),
+                        shellV2.interactions.wrapERC20({
+                            address: tokens[1].address,
+                            amount: ethers.constants.MaxUint256
+                        })
+                    ]
+                })
+            ).to.be.revertedWith('Slippage limit exceeded');
+
+            await expect(
+                shellV2.executeInteractions({
+                    ocean,
+                    signer: charlotte,
+                    interactions: [
+                        shellV2.interactions.wrapERC20({
+                            address: tokens[0].address,
+                            amount: ten
+                        }),
+                        shellV2.interactions.computeOutputAmount({
+                            address: pools[0].address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                            outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                            specifiedAmount: ethers.constants.MaxUint256,
+                            metadata: ethers.utils.hexZeroPad(ethers.utils.hexlify(1), 32)
+                        }),
+                        shellV2.interactions.unwrapERC20({
+                            address: tokens[1].address,
+                            amount: ethers.constants.MaxUint256
+                        })
+                    ]
+                })
+            ).to.emit(ocean, "ComputeOutputAmount")
+                .withArgs(
+                    pools[0].address,
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                    ten,
+                    ten,
+                    charlotte.address
+                )
+
+            await expect(
+                shellV2.executeInteractions({
+                    ocean,
+                    signer: charlotte,
+                    interactions: [
+                        shellV2.interactions.unwrapERC20({
+                            address: tokens[0].address,
+                            amount: ten
+                        }),
+                        shellV2.interactions.computeInputAmount({
+                            address: pools[0].address,
+                            inputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                            outputToken: shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                            specifiedAmount: ethers.constants.MaxUint256,
+                            metadata: ethers.constants.MaxUint256
+                        }),
+                        shellV2.interactions.wrapERC20({
+                            address: tokens[1].address,
+                            amount: ethers.constants.MaxUint256
+                        })
+                    ]
+                })
+            ).to.emit(ocean, "ComputeInputAmount")
+                .withArgs(
+                    pools[0].address,
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
+                    ten,
+                    ten,
+                    charlotte.address
+                )
         })
     })
 })

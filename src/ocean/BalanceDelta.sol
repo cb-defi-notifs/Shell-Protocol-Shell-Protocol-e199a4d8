@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 // Cowri Labs Inc.
 
-pragma solidity =0.8.4;
+pragma solidity =0.8.10;
 
 import {InteractionType} from "./Interactions.sol";
 
 /**
  * A BalanceDelta structure tracks a user's intra-transaction balance change
  *  for a particular token
- * @param tokenId ID of the tracked token
+ * @param tokenId ID of the tracked token in the accounting system
  * @param delta a signed integer that records the user's accumulated debit
  *  or credit.
  *
+ * Examples:
  * BalanceDelta positiveDelta = BalanceDelta(0xDE..AD, 100);
  * BalanceDelta negativeDelta = BalanceDelta(0xBE..EF, -100);
  *
@@ -30,8 +31,6 @@ struct BalanceDelta {
  *
  * `self` is an array of BalanceDelta structures.
  *
- * See the BalanceDelta declaration in OceanStructs.sol for more information.
- *
  * @dev each function uses a greedy linear search, so if there are duplicate
  *  deltas for the same tokenId, only the first delta is operated on. The
  *  duplicates will always have {tokenID: $DUPLICATE, delta: 0}.  If an tokenId
@@ -41,8 +40,6 @@ struct BalanceDelta {
  *  tokenIds.
  *
  * Because the delta is a signed integer, it can be positive or negative.
- *      A positive delta can be consumed by an unwrap or a computeOutputAmount
- *      A negative delta can be covered by a wrap or a computeInputAmount
  *
  * At the end of the transaction, positive deltas are minted to the user and
  *  negative deltas are burned from the user.  This is done using the ERC-1155's
@@ -95,33 +92,44 @@ library LibBalanceDelta {
     }
 
     /**
-     * @dev Roll over occurs when we use a stored delta as the specifiedAmount
-     *      for an interaction. Some interactions can consume all of a positive
-     *      delta, while others can cover all of a negative delta.
+     * @dev This function returns an unsigned amount given a tokenId and an
+     *  interaction type.
+     * @dev This function reverts when the sign of the tokenId's delta
+     *  does not match the sign expected by the interaction type.
      *
-     * @dev All interactions take unsigned amounts.  Some interactions take the
-     *  passed amount from a user, while other interactions give the passed
-     *  amount to the user. This is why we only return positive deltas for some
-     *  interaction types and only return negative deltas for the others, and
-     *  why this function returns a uint256 when the underlying representation
-     *  of the delta is an int256.
+     *  - All interaction types expect unsigned amounts as arguments.
+     *  - Some interaction types, like wraps, increase a user's balance.
+     *  - Others, like unwraps, decrease a user's balance.
+     *  - The interactions that increase a user's balance can take a negative
+     *   delta as an input. In effect, the debit represented by the delta is
+     *   offset by the credit from the interaction.
+     *  - Similarly, interactions that decrease a user's balance can take
+     *   a positive delta as an input.
+     *  - When a delta is of the wrong sign for the interaction type, we need
+     *   to revert the transaction.
      *
      * EXAMPLE 1. Convert 100 DAI into as many USDC as possible
+     * [0]  BalanceDelta[] = [ BalanceDelta(DAI, 0), BalanceDelta(USDC, 0) ]
      *  wrap(token: DAI, amount: 100)
-     *  |> computeOutputAmount(input: DAI, output: USDC, amount: GET_BALANCE_DELTA)
-     *  |> unwrap(token: USDC, amount: GET_BALANCE_DELTA)
+     * [1]  BalanceDelta[] = [ BalanceDelta(DAI, 100), BalanceDelta(USDC, 0) ]
+     *  computeOutputAmount(input: DAI, output: USDC, amount: GET_BALANCE_DELTA)
+     * [2]  BalanceDelta[] = [ BalanceDelta(DAI, 0), BalanceDelta(USDC, 99.997) ]
+     *  unwrap(token: USDC, amount: GET_BALANCE_DELTA)
      *
      * EXAMPLE 2. Convert as few DAI as possible into exactly 100 USDC
+     * [0]  BalanceDelta[] = [ BalanceDelta(DAI, 0), BalanceDelta(USDC, 0) ]
      *  unwrap(token: USDC, amount: 100)
-     *  |> computeInputAmount(input: DAI, output: USDC, amount: GET_BALANCE_DELTA)
-     *  |> unwrap(token: DAI, amount: GET_BALANCE_DELTA)
+     * [1]  BalanceDelta[] = [ BalanceDelta(DAI, 0), BalanceDelta(USDC, -100) ]
+     *  computeInputAmount(input: DAI, output: USDC, amount: GET_BALANCE_DELTA)
+     * [2]  BalanceDelta[] = [ BalanceDelta(DAI, -100.003), BalanceDelta(USDC, 0) ]
+     *  wrap(token: DAI, amount: GET_BALANCE_DELTA)
      *
-     *  +----------------------+----------------------+
-     *  |  Positive roll over  |  Negative roll over  |
-     *  +----------------------+----------------------+
-     *  | Unwrap*              | Wrap*                |
-     *  | ComputeOutputAmount  | computeInputAmount   |
-     *  +----------------------+----------------------+
+     * EXAMPLE 3. Unwrap DAI twice (reverts)
+     * [0]  BalanceDelta[] = [ BalanceDelta(DAI, 0), ]
+     *  unwrap(token: DAI, amount: 100)
+     * [1]  BalanceDelta[] = [ BalanceDelta(DAI, -100), ]
+     *  unwrap(token: DAI, amount: GET_BALANCE_DELTA)
+     * !!! Throw("PosDelta :: amount < 0") !!!
      */
     function getBalanceDelta(
         BalanceDelta[] memory self,
@@ -132,6 +140,7 @@ library LibBalanceDelta {
             interaction == InteractionType.UnwrapErc20 ||
             interaction == InteractionType.UnwrapErc721 ||
             interaction == InteractionType.UnwrapErc1155 ||
+            interaction == InteractionType.UnwrapEther ||
             interaction == InteractionType.ComputeOutputAmount
         ) {
             return _getPositiveBalanceDelta(self, tokenId);
@@ -145,7 +154,8 @@ library LibBalanceDelta {
      * @dev This function transforms the accumulated deltas into the arguments
      *  expected by ERC-1155 _mintBatch() and _burnBatch so that the caller
      *  can apply the deltas to the ledger.
-     * @dev ERC-1155 expects an index by index pairing between ids and amounts
+     * @dev ERC-1155 expects an array of ids and an array of amounts, paired by
+     *  index.
      *  +-------+-------+-----------+
      *  | index | ids[] | amounts[] |
      *  +-------+-------+-----------+
@@ -176,8 +186,13 @@ library LibBalanceDelta {
         (uint256 numberOfMints, uint256 numberOfBurns) = _getMintsAndBurns(
             self
         );
-        (mintIds, mintAmounts) = _createIDAndAmountArrays(numberOfMints);
-        (burnIds, burnAmounts) = _createIDAndAmountArrays(numberOfBurns);
+
+        mintIds = new uint256[](numberOfMints);
+        mintAmounts = new uint256[](numberOfMints);
+
+        burnIds = new uint256[](numberOfBurns);
+        burnAmounts = new uint256[](numberOfBurns);
+
         _copyDeltasToMintAndBurnArrays(
             self,
             mintIds,
@@ -201,35 +216,18 @@ library LibBalanceDelta {
         pure
         returns (uint256 numberOfMints, uint256 numberOfBurns)
     {
-        for (uint256 i = 0; i < self.length; i++) {
+        uint256 numberOfZeros = 0;
+        for (uint256 i = 0; i < self.length; ++i) {
             int256 delta = self[i].delta;
             if (delta > 0) {
-                numberOfMints++;
+                ++numberOfMints;
             } else if (delta < 0) {
-                numberOfBurns++;
+                ++numberOfBurns;
+            } else {
+                ++numberOfZeros;
             }
         }
-        assert((numberOfMints + numberOfBurns) <= self.length);
-    }
-
-    /**
-     * @dev this function ensures we're creating a pair of arrays with the same
-     *  length
-     * @dev This is branchless because `uint[] memory arr = new uint[](0);`
-     *  produces a reference to an empty array called arr with property
-     *  (arr.length == 0).  Being branchless/uniform reduces complexity both
-     *  inside this function and in the calling context.
-     * @param numberOfElements the size of the arrays we are going to allocate.
-     * @return ids an array to hold ids for an ERC-1155 batch operation
-     * @return amounts an array to hold amounts for an ERC-1155 batch operation
-     */
-    function _createIDAndAmountArrays(uint256 numberOfElements)
-        private
-        pure
-        returns (uint256[] memory ids, uint256[] memory amounts)
-    {
-        ids = new uint256[](numberOfElements);
-        amounts = new uint256[](numberOfElements);
+        assert((numberOfMints + numberOfBurns + numberOfZeros) == self.length);
     }
 
     /**
@@ -248,46 +246,21 @@ library LibBalanceDelta {
     ) private pure {
         uint256 mintsSoFar = 0;
         uint256 burnsSoFar = 0;
-        for (uint256 i = 0; i < self.length; i++) {
+        for (uint256 i = 0; i < self.length; ++i) {
             int256 delta = self[i].delta;
             if (delta > 0) {
-                _updateIDAndAmountArrays(
-                    mintIds,
-                    mintAmounts,
-                    mintsSoFar,
-                    self[i].tokenId,
-                    uint256(delta)
-                );
+                mintIds[mintsSoFar] = self[i].tokenId;
+                mintAmounts[mintsSoFar] = uint256(delta);
                 mintsSoFar += 1;
             } else if (delta < 0) {
-                _updateIDAndAmountArrays(
-                    burnIds,
-                    burnAmounts,
-                    burnsSoFar,
-                    self[i].tokenId,
-                    uint256(-delta)
-                );
+                burnIds[burnsSoFar] = self[i].tokenId;
+                burnAmounts[burnsSoFar] = uint256(-delta);
                 burnsSoFar += 1;
             }
         }
         assert(
             (mintsSoFar == mintIds.length) && (burnsSoFar == burnIds.length)
         );
-    }
-
-    /**
-     * @dev similar to the creation function above, this function exists to
-     *  ensure that the ids and amounts arrays are updated in lockstep.
-     */
-    function _updateIDAndAmountArrays(
-        uint256[] memory ids,
-        uint256[] memory amounts,
-        uint256 index,
-        uint256 tokenId,
-        uint256 amount
-    ) private pure {
-        ids[index] = tokenId;
-        amounts[index] = amount;
     }
 
     /**
@@ -334,7 +307,7 @@ library LibBalanceDelta {
         pure
         returns (uint256 index)
     {
-        for (index = 0; index < self.length; index++) {
+        for (index = 0; index < self.length; ++index) {
             if (self[index].tokenId == tokenId) {
                 return index;
             }

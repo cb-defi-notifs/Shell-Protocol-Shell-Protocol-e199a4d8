@@ -1,0 +1,18 @@
+[profile.default]
+src = 'src'
+out = 'out'
+libs = ['lib']
+remappings = [
+  'ds-test/=lib/ds-test/src/',
+  '@openzeppelin=node_modules/@openzeppelin',
+  'abdk-libraries-solidity=node_modules/abdk-libraries-solidity'
+]
+solc_version = "0.8.10"
+# The number of fuzz runs for fuzz tests
+fuzz_runs = 256
+# The max number of individual inputs that may be rejected before a fuzz test aborts
+fuzz_max_local_rejects = 65536
+# The max number of combined inputs that may be rejected before a fuzz test aborts
+fuzz_max_global_rejects = 100000000
+
+# See more config options https://github.com/gakonst/foundry/tree/master/config

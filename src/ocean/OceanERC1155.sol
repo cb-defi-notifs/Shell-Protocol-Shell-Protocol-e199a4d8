@@ -2,7 +2,7 @@
 // OpenZeppelin Contracts v4.3.2 (token/ERC1155/ERC1155.sol)
 // Cowri Labs, Inc., modifications licensed under: MIT
 
-pragma solidity =0.8.4;
+pragma solidity =0.8.10;
 
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
@@ -13,9 +13,13 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 // OpenZeppelin Inherited Contracts
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // ShellV2 Interface
 import {IOceanToken} from "./IOceanToken.sol";
+
+// ShellV2 Permit Signature
+import {ERC1155PermitSignatureExtension} from "./ERC1155PermitSignatureExtension.sol";
 
 /**
  * @dev Implementation of the basic standard multi-token.
@@ -32,15 +36,21 @@ import {IOceanToken} from "./IOceanToken.sol";
 contract OceanERC1155 is
     Context,
     ERC165,
+    ERC1155PermitSignatureExtension,
     IERC1155,
     IERC1155MetadataURI,
     IOceanToken,
+    Ownable,
     ReentrancyGuard
 {
     using Address for address;
 
     /// @notice Mapping from token ID to address with authority over token's issuance
     mapping(uint256 => address) public tokensToPrimitives;
+
+    uint256 constant FUSE_INTACT = 1;
+    uint256 constant FUSE_BROKEN = 0;
+    uint256 public permitFuse;
 
     // Mapping from token ID to account balances
     mapping(uint256 => mapping(address => uint256)) private _balances;
@@ -51,13 +61,29 @@ contract OceanERC1155 is
     // Used as the URI for all token types by relying on ID substitution, e.g. https://token-cdn-domain/{id}.json
     string private _uri;
 
-    event NewTokensRegistered(address indexed creator, uint256[] tokens);
+    event PermitFuseBroken(address indexed breakerAddress);
+    event NewTokensRegistered(
+        address indexed creator,
+        uint256[] tokens,
+        uint256[] nonces
+    );
 
     /**
      * @dev See {_setURI}.
      */
-    constructor(string memory uri_) {
+    constructor(string memory uri_)
+        ERC1155PermitSignatureExtension(
+            bytes("shell-protocol-ocean"),
+            bytes("1")
+        )
+    {
         _setURI(uri_);
+        permitFuse = FUSE_INTACT;
+    }
+
+    function breakPermitFuse() external onlyOwner {
+        permitFuse = FUSE_BROKEN;
+        emit PermitFuseBroken(msg.sender);
     }
 
     /**
@@ -104,10 +130,7 @@ contract OceanERC1155 is
         override
         returns (uint256)
     {
-        require(
-            account != address(0),
-            "ERC1155: balance query for the zero address"
-        );
+        require(account != address(0), "balanceOf(address(0))");
         return _balances[id][account];
     }
 
@@ -125,10 +148,7 @@ contract OceanERC1155 is
         override
         returns (uint256[] memory)
     {
-        require(
-            accounts.length == ids.length,
-            "ERC1155: accounts and ids length mismatch"
-        );
+        require(accounts.length == ids.length, "accounts.length != ids.length");
 
         uint256[] memory batchBalances = new uint256[](accounts.length);
 
@@ -175,7 +195,7 @@ contract OceanERC1155 is
     ) public virtual override nonReentrant {
         require(
             from == _msgSender() || isApprovedForAll(from, _msgSender()),
-            "ERC1155: caller is not owner nor approved"
+            "not owner nor approved"
         );
         _safeTransferFrom(from, to, id, amount, data);
     }
@@ -192,7 +212,7 @@ contract OceanERC1155 is
     ) public virtual override nonReentrant {
         require(
             from == _msgSender() || isApprovedForAll(from, _msgSender()),
-            "ERC1155: transfer caller is not owner nor approved"
+            "not owner nor approved"
         );
         _safeBatchTransferFrom(from, to, ids, amounts, data);
     }
@@ -240,21 +260,27 @@ contract OceanERC1155 is
         uint256 numberOfAdditionalTokens
     ) external override returns (uint256[] memory oceanIds) {
         oceanIds = new uint256[](numberOfAdditionalTokens);
+        uint256[] memory nonces = new uint256[](numberOfAdditionalTokens);
 
-        for (uint256 i = 0; i < numberOfAdditionalTokens; i++) {
+        for (uint256 i = 0; i < numberOfAdditionalTokens; ++i) {
             uint256 tokenNonce = currentNumberOfTokens + i;
             uint256 newToken = _calculateOceanId(msg.sender, tokenNonce);
+            nonces[i] = tokenNonce;
             oceanIds[i] = newToken;
             tokensToPrimitives[newToken] = msg.sender;
         }
-        emit NewTokensRegistered(msg.sender, oceanIds);
+        emit NewTokensRegistered(msg.sender, oceanIds, nonces);
+    }
+
+    function _signaturesEnabled() internal view override returns (bool) {
+        return bool(permitFuse == FUSE_INTACT);
     }
 
     /**
-     * @dev returns true when a primitive does NOT have authority over an ID
+     * @dev returns true when a primitive did NOT register an ID
      *
-     * Used in LiquidityOcean._doPath to determine if the Ocean needs to
-     *    explicitly mint/burn tokens to balance a transaction.
+     * Used  to determine if the Ocean needs to explicitly mint/burn tokens
+     *  balance a transaction.
      */
     function _isNotTokenOfPrimitive(uint256 oceanId, address primitive)
         internal
@@ -275,11 +301,8 @@ contract OceanERC1155 is
      *      When a contract registers a new token, the token has an associated
      *      nonce, which functions just like an ERC721 or ERC1155 token ID.
      *
-     * For ERC20's the oceanId is just a cast of the ERC20 contract address:
-     *      uint256(uint160(address))
-     *
-     * For the other three origins, the oceanId is calculated by using the
-     *      contract address of the origin and the relevant ID.
+     * The oceanId is calculated by using the contract address of the origin
+     *      and the relevant ID.  For ERC20 tokens, the ID is always 0.
      */
     function _calculateOceanId(address tokenContract, uint256 tokenId)
         internal
@@ -308,15 +331,12 @@ contract OceanERC1155 is
         uint256 amount,
         bytes memory data
     ) internal virtual {
-        require(to != address(0), "ERC1155: transfer to the zero address");
+        require(to != address(0), "transfer to the zero address");
 
         address operator = _msgSender();
 
         uint256 fromBalance = _balances[id][from];
-        require(
-            fromBalance >= amount,
-            "ERC1155: insufficient balance for transfer"
-        );
+        require(fromBalance >= amount, "insufficient balance");
         unchecked {
             _balances[id][from] = fromBalance - amount;
         }
@@ -344,11 +364,8 @@ contract OceanERC1155 is
         uint256[] memory amounts,
         bytes memory data
     ) internal virtual {
-        require(
-            ids.length == amounts.length,
-            "ERC1155: ids and amounts length mismatch"
-        );
-        require(to != address(0), "ERC1155: transfer to the zero address");
+        require(ids.length == amounts.length, "ids.length != amounts.length");
+        require(to != address(0), "transfer to the zero address");
 
         address operator = _msgSender();
 
@@ -357,10 +374,7 @@ contract OceanERC1155 is
             uint256 amount = amounts[i];
 
             uint256 fromBalance = _balances[id][from];
-            require(
-                fromBalance >= amount,
-                "ERC1155: insufficient balance for transfer"
-            );
+            require(fromBalance >= amount, "insufficient balance");
             unchecked {
                 _balances[id][from] = fromBalance - amount;
             }
@@ -490,7 +504,7 @@ contract OceanERC1155 is
 
         address operator = _msgSender();
 
-        for (uint256 i = 0; i < ids.length; i++) {
+        for (uint256 i = 0; i < ids.length; ++i) {
             _balances[ids[i]][to] += amounts[i];
         }
 
@@ -524,7 +538,7 @@ contract OceanERC1155 is
         address operator = _msgSender();
 
         uint256 fromBalance = _balances[id][from];
-        require(fromBalance >= amount, "ERC1155: burn amount exceeds balance");
+        require(fromBalance >= amount, "burn amount exceeds balance");
         unchecked {
             _balances[id][from] = fromBalance - amount;
         }
@@ -549,15 +563,12 @@ contract OceanERC1155 is
 
         address operator = _msgSender();
 
-        for (uint256 i = 0; i < ids.length; i++) {
+        for (uint256 i = 0; i < ids.length; ++i) {
             uint256 id = ids[i];
             uint256 amount = amounts[i];
 
             uint256 fromBalance = _balances[id][from];
-            require(
-                fromBalance >= amount,
-                "ERC1155: burn amount exceeds balance"
-            );
+            require(fromBalance >= amount, "burn amount exceeds balance");
             unchecked {
                 _balances[id][from] = fromBalance - amount;
             }
@@ -575,8 +586,8 @@ contract OceanERC1155 is
         address owner,
         address operator,
         bool approved
-    ) internal virtual {
-        require(owner != operator, "ERC1155: setting approval status for self");
+    ) internal override {
+        require(owner != operator, "Set approval for self");
         _operatorApprovals[owner][operator] = approved;
         emit ApprovalForAll(owner, operator, approved);
     }
@@ -600,12 +611,12 @@ contract OceanERC1155 is
                 )
             returns (bytes4 response) {
                 if (response != IERC1155Receiver.onERC1155Received.selector) {
-                    revert("ERC1155: ERC1155Receiver rejected tokens");
+                    revert("ERC1155Receiver rejected");
                 }
             } catch Error(string memory reason) {
                 revert(reason);
             } catch {
-                revert("ERC1155: transfer to non ERC1155Receiver implementer");
+                revert("non-ERC1155Receiver");
             }
         }
     }
@@ -631,12 +642,12 @@ contract OceanERC1155 is
                 if (
                     response != IERC1155Receiver.onERC1155BatchReceived.selector
                 ) {
-                    revert("ERC1155: ERC1155Receiver rejected tokens");
+                    revert("ERC1155Receiver rejected");
                 }
             } catch Error(string memory reason) {
                 revert(reason);
             } catch {
-                revert("ERC1155: transfer to non ERC1155Receiver implementer");
+                revert("non-ERC1155Receiver");
             }
         }
     }

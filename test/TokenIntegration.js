@@ -18,10 +18,12 @@ describe("Token Integration Tests", () => {
             const decimals = "6"
             const mintAmount = shellV2.utils.numberWithFixedDecimals({ number: "100", decimals })
             let token
+            let oceanId
 
             before("Deploy token", async () => {
                 const erc20Contract = await ethers.getContractFactory("ERC20MintsToDeployer")
                 token = await erc20Contract.deploy(mintAmount, decimals)
+                oceanId = shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 })
 
                 const [aliceBalance, oceanBalance] = await Promise.all([
                     token.balanceOf(alice.address),
@@ -43,7 +45,7 @@ describe("Token Integration Tests", () => {
                 await shellV2.executeInteraction({ ocean: ocean, signer: alice, interaction: interaction });
 
                 const [aliceWrappedTokenFinalBalance, aliceExternalTokenFinalBalance, oceanExternalTokenFinalBalance] = await Promise.all([
-                    ocean.balanceOf(alice.address, token.address),
+                    ocean.balanceOf(alice.address, oceanId),
                     token.balanceOf(alice.address),
                     token.balanceOf(ocean.address)
                 ])
@@ -70,10 +72,10 @@ describe("Token Integration Tests", () => {
                     bobWrappedTokenFinalBalance,
                     feeDivisor
                 ] = await Promise.all([
-                    ocean.balanceOf(alice.address, token.address),
+                    ocean.balanceOf(alice.address, oceanId),
                     token.balanceOf(alice.address),
                     token.balanceOf(ocean.address),
-                    ocean.balanceOf(bob.address, token.address),
+                    ocean.balanceOf(bob.address, oceanId),
                     ocean.unwrapFeeDivisor()
                 ])
 
@@ -103,7 +105,7 @@ describe("Token Integration Tests", () => {
 
                 await shellV2.executeInteraction({ ocean: ocean, signer: alice, interaction: interaction })
                 expect(await token.balanceOf(ocean.address)).to.equal(wrapAmount)
-                expect(await ocean.balanceOf(alice.address, token.address)).to.equal(specifiedAmount)
+                expect(await ocean.balanceOf(alice.address, oceanId)).to.equal(specifiedAmount)
                 await shellV2.executeInteraction({
                     ocean: ocean,
                     signer: alice,
@@ -112,7 +114,7 @@ describe("Token Integration Tests", () => {
                         amount: specifiedAmount
                     })
                 })
-                expect(await ocean.balanceOf(alice.address, token.address)).to.equal(0)
+                expect(await ocean.balanceOf(alice.address, oceanId)).to.equal(0)
             })
 
             it("Unwrap amount that does fit into 6 decimals", async () => {
@@ -121,6 +123,7 @@ describe("Token Integration Tests", () => {
                     amount: "50"
                 })
                 await shellV2.executeInteraction({ ocean: ocean, signer: alice, interaction: wrapInteraction })
+                const initialBalance = await token.balanceOf(alice.address)
                 const specifiedAmount = ethers.BigNumber.from("123456789012345678")
                 const unwrapAmount = ethers.BigNumber.from("123456")
 
@@ -130,7 +133,8 @@ describe("Token Integration Tests", () => {
                 })
 
                 await shellV2.executeInteraction({ ocean: ocean, signer: alice, interaction: interaction })
-                //expect(await token.balanceOf(alice.address)).to.equal(unwrapAmount)
+
+                expect(await token.balanceOf(alice.address)).to.equal(unwrapAmount.add(initialBalance))
             })
         })
 
@@ -138,10 +142,12 @@ describe("Token Integration Tests", () => {
             const decimals = "18"
             const mintAmount = shellV2.utils.numberWithFixedDecimals({ number: "100", decimals })
             let token
+            let oceanId
 
             before("Deploy token", async () => {
                 const erc20Contract = await ethers.getContractFactory("ERC20MintsToDeployer")
                 token = await erc20Contract.deploy(mintAmount, decimals)
+                oceanId = shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 })
 
                 const [aliceBalance, oceanBalance] = await Promise.all([
                     token.balanceOf(alice.address),
@@ -163,7 +169,7 @@ describe("Token Integration Tests", () => {
                 await shellV2.executeInteraction({ ocean: ocean, signer: alice, interaction: interaction });
 
                 const [aliceWrappedTokenFinalBalance, aliceExternalTokenFinalBalance, oceanExternalTokenFinalBalance] = await Promise.all([
-                    ocean.balanceOf(alice.address, token.address),
+                    ocean.balanceOf(alice.address, oceanId),
                     token.balanceOf(alice.address),
                     token.balanceOf(ocean.address)
                 ])
@@ -190,10 +196,10 @@ describe("Token Integration Tests", () => {
                     bobWrappedTokenFinalBalance,
                     feeDivisor
                 ] = await Promise.all([
-                    ocean.balanceOf(alice.address, token.address),
+                    ocean.balanceOf(alice.address, oceanId),
                     token.balanceOf(alice.address),
                     token.balanceOf(ocean.address),
-                    ocean.balanceOf(bob.address, token.address),
+                    ocean.balanceOf(bob.address, oceanId),
                     ocean.unwrapFeeDivisor()
                 ])
 
@@ -216,10 +222,12 @@ describe("Token Integration Tests", () => {
             const decimals = "21"
             const mintAmount = shellV2.utils.numberWithFixedDecimals({ number: "100", decimals })
             let token
+            let oceanId
 
             before("Deploy token", async () => {
                 const erc20Contract = await ethers.getContractFactory("ERC20MintsToDeployer")
                 token = await erc20Contract.deploy(mintAmount, decimals)
+                oceanId = shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 })
 
                 const [aliceBalance, oceanBalance] = await Promise.all([
                     token.balanceOf(alice.address),
@@ -241,7 +249,7 @@ describe("Token Integration Tests", () => {
                 await shellV2.executeInteraction({ ocean: ocean, signer: alice, interaction: interaction });
 
                 const [aliceWrappedTokenFinalBalance, aliceExternalTokenFinalBalance, oceanExternalTokenFinalBalance] = await Promise.all([
-                    ocean.balanceOf(alice.address, token.address),
+                    ocean.balanceOf(alice.address, oceanId),
                     token.balanceOf(alice.address),
                     token.balanceOf(ocean.address)
                 ])
@@ -268,10 +276,10 @@ describe("Token Integration Tests", () => {
                     bobWrappedTokenFinalBalance,
                     feeDivisor
                 ] = await Promise.all([
-                    ocean.balanceOf(alice.address, token.address),
+                    ocean.balanceOf(alice.address, oceanId),
                     token.balanceOf(alice.address),
                     token.balanceOf(ocean.address),
-                    ocean.balanceOf(bob.address, token.address),
+                    ocean.balanceOf(bob.address, oceanId),
                     ocean.unwrapFeeDivisor()
                 ])
 
@@ -580,6 +588,159 @@ describe("Token Integration Tests", () => {
                 alice.address, ocean.address, bigNumIds.slice(1, 3), [10000, 10000], []
             )).to.be.revertedWith("ERC1155: ERC1155Receiver rejected tokens")
         })
+
+        describe("Ocean won't recursively wrap its own tokens", () => {
+            before("Wrap some tokens", async () => {
+                await shellV2.executeInteraction({
+                    ocean,
+                    signer: alice,
+                    interaction: shellV2.interactions.wrapERC1155({
+                        address: token.address,
+                        id: bigNumIds[1],
+                        amount: mintAmount
+                    })
+
+                })
+            })
+
+            it("Recursively wrapping an ocean token fails", async () => {
+                await expect(
+                    ocean.connect(alice).doInteraction(
+                        shellV2.interactions.wrapERC1155({
+                            address: ocean.address,
+                            id: shellV2.utils.calculateWrappedTokenId({
+                                address: token.address,
+                                id: bigNumIds[1]
+                            }),
+                            amount: mintAmount
+                        })
+                    )
+                ).to.be.revertedWith("No recursive wraps")
+            })
+
+            it("Recursively unwrapping an ocean token fails", async () => {
+                await expect(
+                    ocean.connect(alice).doInteraction(
+                        shellV2.interactions.unwrapERC1155({
+                            address: ocean.address,
+                            id: shellV2.utils.calculateWrappedTokenId({
+                                address: token.address,
+                                id: bigNumIds[1]
+                            }),
+                            amount: mintAmount
+                        })
+                    )
+                ).to.be.revertedWith("No recursive unwraps")
+            })
+        })
+    })
+
+    describe("Ether Tests", () => {
+        let WRAPPED_ETHER_ID
+
+        before("Get Wrapped Ether Ocean Id", async () => {
+            WRAPPED_ETHER_ID = await ocean.WRAPPED_ETHER_ID()
+        })
+
+        it("Can wrap Ether with empty interactions array", async () => {
+            const initialAliceBalance = await ethers.provider.getBalance(alice.address)
+            const initialOceanBalance = await ethers.provider.getBalance(ocean.address)
+
+            expect(initialOceanBalance).to.equal(0)
+            expect(await ocean.balanceOf(alice.address, WRAPPED_ETHER_ID)).to.equal(0)
+
+            let responsePromise
+            await expect(
+                (responsePromise = ocean.connect(alice).doMultipleInteractions([], [WRAPPED_ETHER_ID], { value: 1 }))
+            ).to.emit(ocean, "EtherWrap")
+                .withArgs(1, alice.address)
+
+            const receipt = await (await responsePromise).wait(1)
+            const ethGasUsed = receipt.gasUsed.mul(receipt.effectiveGasPrice)
+
+            expect(await ocean.balanceOf(alice.address, WRAPPED_ETHER_ID)).to.equal(1)
+
+            const finalAliceBalance = await ethers.provider.getBalance(alice.address)
+            const finalOceanBalance = await ethers.provider.getBalance(ocean.address)
+
+            expect(finalOceanBalance).to.equal(1)
+            expect(initialAliceBalance.sub(ethGasUsed).sub(1)).to.equal(finalAliceBalance);
+            expect(initialAliceBalance.add(initialOceanBalance)).to.equal(finalAliceBalance.add(finalOceanBalance).add(ethGasUsed));
+        })
+
+        it("Can unwrap Ether", async () => {
+            const initialAliceBalance = await ethers.provider.getBalance(alice.address)
+            const initialOceanBalance = await ethers.provider.getBalance(ocean.address)
+
+            expect(await ocean.balanceOf(alice.address, WRAPPED_ETHER_ID)).to.equal(1).and.to.equal(initialOceanBalance)
+
+            let responsePromise
+            await expect(
+                (responsePromise = ocean.connect(alice).doMultipleInteractions([
+                    {
+                        interactionTypeAndAddress: shellV2.utils.packInteractionTypeAndAddress({
+                            interactionType: shellV2.constants.ETHER_UNWRAP,
+                            address: ethers.constants.AddressZero
+                        }),
+                        inputToken: 0,
+                        outputToken: 0,
+                        specifiedAmount: 1,
+                        metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                    }
+                ], [WRAPPED_ETHER_ID]))
+            ).to.emit(ocean, "EtherUnwrap").withArgs(1, 0, alice.address)
+                .and.to.emit(ocean, "TransferSingle")
+                .withArgs(alice.address, alice.address, ethers.constants.AddressZero, WRAPPED_ETHER_ID, 1)
+
+            const receipt = await (await responsePromise).wait(1)
+            const ethGasUsed = receipt.gasUsed.mul(receipt.effectiveGasPrice)
+
+            expect(await ocean.balanceOf(alice.address, WRAPPED_ETHER_ID)).to.equal(0)
+
+            const finalAliceBalance = await ethers.provider.getBalance(alice.address)
+            const finalOceanBalance = await ethers.provider.getBalance(ocean.address)
+
+            expect(finalOceanBalance).to.equal(0)
+            expect(initialAliceBalance.sub(ethGasUsed).add(1)).to.equal(finalAliceBalance);
+            expect(initialAliceBalance.add(initialOceanBalance)).to.equal(finalAliceBalance.add(finalOceanBalance).add(ethGasUsed));
+        })
+
+        it("Can wrap and unwrap Ether in one transaction", async () => {
+            const initialAliceBalance = await ethers.provider.getBalance(alice.address)
+            const initialOceanBalance = await ethers.provider.getBalance(ocean.address)
+
+            expect(await ocean.balanceOf(alice.address, WRAPPED_ETHER_ID)).to.equal(0).and.to.equal(initialOceanBalance)
+
+            let responsePromise
+            await expect(
+                (responsePromise = ocean.connect(alice).doMultipleInteractions([
+                    {
+                        interactionTypeAndAddress: shellV2.utils.packInteractionTypeAndAddress({
+                            interactionType: shellV2.constants.ETHER_UNWRAP,
+                            address: ethers.constants.AddressZero
+                        }),
+                        inputToken: 0,
+                        outputToken: 0,
+                        specifiedAmount: 1,
+                        metadata: shellV2.constants.THIRTY_TWO_BYTES_OF_ZERO
+                    }
+                ], [WRAPPED_ETHER_ID], { value: 1 }))
+            ).to.emit(ocean, "EtherWrap").withArgs(1, alice.address)
+                .and.to.emit(ocean, "EtherUnwrap")
+                .withArgs(1, 0, alice.address)
+
+            const receipt = await (await responsePromise).wait(1)
+            const ethGasUsed = receipt.gasUsed.mul(receipt.effectiveGasPrice)
+
+            expect(await ocean.balanceOf(alice.address, WRAPPED_ETHER_ID)).to.equal(0)
+
+            const finalAliceBalance = await ethers.provider.getBalance(alice.address)
+            const finalOceanBalance = await ethers.provider.getBalance(ocean.address)
+
+            expect(finalOceanBalance).to.equal(0).and.to.equal(initialOceanBalance)
+            expect(initialAliceBalance.sub(ethGasUsed)).to.equal(finalAliceBalance)
+            expect(initialAliceBalance.add(initialOceanBalance)).to.equal(finalAliceBalance.add(finalOceanBalance).add(ethGasUsed));
+        })
     })
 
     describe("Malformed Token Interactions", () => {
@@ -623,7 +784,7 @@ describe("Token Integration Tests", () => {
                     ocean.connect(alice).doInteraction(
                         {
                             interactionTypeAndAddress: shellV2.utils.packInteractionTypeAndAddress({
-                                interactionType: "0x08",
+                                interactionType: "0x09",
                                 address: ethers.constants.AddressZero
                             }),
                             inputToken: 0,

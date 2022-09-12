@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Cowri Labs Inc.
 
-pragma solidity =0.8.4;
+pragma solidity =0.8.10;
 
-import {IOceanInteractions, Interaction} from "../Interactions.sol";
+import {IOceanInteractions, Interaction} from "../ocean/Interactions.sol";
 
 contract Forwarder {
     function singlePassthrough(Interaction calldata interaction, address ocean)

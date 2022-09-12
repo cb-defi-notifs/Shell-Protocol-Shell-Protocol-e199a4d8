@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: unlicensed
 // Cowri Labs Inc.
 
-pragma solidity =0.8.4;
+pragma solidity =0.8.10;
 
+/// @notice Implementing this allows a primitive to be called by the Ocean's
+///  defi framework.
 interface IOceanPrimitive {
     function computeOutputAmount(
         uint256 inputToken,

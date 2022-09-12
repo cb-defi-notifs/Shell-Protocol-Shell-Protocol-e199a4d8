@@ -81,7 +81,7 @@ describe("ERC-1155 Token Function Tests", () => {
             })
             expect(await ocean.balanceOfBatch(
                 tokens.map(() => alice.address),
-                tokens.map((token) => token.address)
+                tokens.map((token) => shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 }))
             )).to.deep.equal([mintAmount, mintAmount, mintAmount])
         })
 
@@ -92,16 +92,24 @@ describe("ERC-1155 Token Function Tests", () => {
                     .safeTransferFrom(
                         alice.address,
                         bob.address,
-                        tokens[0].address,
+                        shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 }),
                         transferAmount,
                         []
                     )
             ).to.have.property('hash')
-            expect(await ocean.balanceOf(bob.address, tokens[0].address)).to.equal(transferAmount)
+            expect(
+                await ocean.balanceOf(
+                    bob.address,
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 })
+                )
+            ).to.equal(transferAmount)
         })
 
         it("Alice can transfer Bob multiple tokens", async () => {
-            const multipleTokens = [tokens[1].address, tokens[2].address]
+            const multipleTokens = [
+                shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                shellV2.utils.calculateWrappedTokenId({ address: tokens[2].address, id: 0 })
+            ]
             const multipleTransfers = [transferAmount, transferAmount]
             expect(
                 await ocean
@@ -128,8 +136,11 @@ describe("ERC-1155 Token Function Tests", () => {
                 receiver = await receive1155Contract.deploy()
                 expect(await receiver.supportsInterface("0xDEADBEEF")).to.equal(false)
                 expect(await receiver.supportsInterface("0x4e2312e0")).to.equal(true)
-                singleToken = tokens[0].address
-                multipleTokens = [tokens[1].address, tokens[2].address]
+                singleToken = shellV2.utils.calculateWrappedTokenId({ address: tokens[0].address, id: 0 })
+                multipleTokens = [
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[1].address, id: 0 }),
+                    shellV2.utils.calculateWrappedTokenId({ address: tokens[2].address, id: 0 })
+                ]
                 multipleTransfers = [transferAmount, transferAmount]
             })
 
@@ -157,12 +168,10 @@ describe("ERC-1155 Token Function Tests", () => {
                             []
                         )
                 ).to.have.property('hash')
-
                 expect(
                     await ocean.balanceOfBatch(
                         [receiver.address, receiver.address, receiver.address],
-                        tokens.map((token) => token.address)
-                    )
+                        tokens.map((token) => shellV2.utils.calculateWrappedTokenId({ address: token.address, id: 0 })))
                 ).to.deep.equal(tokens.map(() => transferAmount))
             })
 
@@ -176,7 +185,7 @@ describe("ERC-1155 Token Function Tests", () => {
                             transferAmount,
                             [2]
                         )
-                ).to.be.revertedWith("ERC1155: ERC1155Receiver rejected tokens")
+                ).to.be.revertedWith("ERC1155Receiver rejected")
 
                 await expect(
                     ocean.connect(alice)
@@ -187,7 +196,7 @@ describe("ERC-1155 Token Function Tests", () => {
                             multipleTransfers,
                             [2]
                         )
-                ).to.be.revertedWith("ERC1155: ERC1155Receiver rejected tokens")
+                ).to.be.revertedWith("ERC1155Receiver rejected")
             })
 
             it("Transfers to IERC1155Receiver, reverted", async () => {
@@ -225,7 +234,7 @@ describe("ERC-1155 Token Function Tests", () => {
                             transferAmount,
                             [1]
                         )
-                ).to.be.revertedWith("ERC1155: transfer to non ERC1155Receiver implementer")
+                ).to.be.revertedWith("non-ERC1155Receiver")
 
                 await expect(
                     ocean.connect(alice)
@@ -236,20 +245,20 @@ describe("ERC-1155 Token Function Tests", () => {
                             multipleTransfers,
                             [1]
                         )
-                ).to.be.revertedWith("ERC1155: transfer to non ERC1155Receiver implementer")
+                ).to.be.revertedWith("non-ERC1155Receiver")
             })
         })
 
         it("Cannot set approval for self", async () => {
             await expect(
                 ocean.connect(alice).setApprovalForAll(alice.address, true)
-            ).to.be.revertedWith("ERC1155: setting approval status for self")
+            ).to.be.revertedWith("Set approval for self")
         })
 
         it("Cannot get balance of zero address", async () => {
             await expect(
                 ocean.connect(alice).balanceOf(ethers.constants.AddressZero, 1)
-            ).to.be.revertedWith("ERC1155: balance query for the zero address")
+            ).to.be.revertedWith("balanceOf(address(0))")
         })
 
         it("Cannot get balanceOfBatch with mis-matched arrays", async () => {
@@ -258,7 +267,7 @@ describe("ERC-1155 Token Function Tests", () => {
                     [alice.address, alice.address],
                     [1]
                 )
-            ).to.be.revertedWith("ERC1155: accounts and ids length mismatch")
+            ).to.be.revertedWith("accounts.length != ids.length")
         })
 
         it("Cannot safeTransferFrom without approval", async () => {
@@ -270,7 +279,7 @@ describe("ERC-1155 Token Function Tests", () => {
                     1,
                     []
                 )
-            ).to.be.revertedWith("ERC1155: caller is not owner nor approved")
+            ).to.be.revertedWith("not owner nor approved")
         })
 
         it("Cannot safeBatchTransferFrom without approval", async () => {
@@ -282,7 +291,7 @@ describe("ERC-1155 Token Function Tests", () => {
                     [1, 1],
                     []
                 )
-            ).to.be.revertedWith("ERC1155: transfer caller is not owner nor approved")
+            ).to.be.revertedWith("not owner nor approved")
         })
 
         it("Cannot safeBatchTransferFrom with mis-matched arrays", async () => {
@@ -294,7 +303,7 @@ describe("ERC-1155 Token Function Tests", () => {
                     [1],
                     []
                 )
-            ).to.be.revertedWith("ERC1155: ids and amounts length mismatch")
+            ).to.be.revertedWith("ids.length != amounts.length")
         })
 
         it("Cannot safeTransferFrom to zero address", async () => {
@@ -306,7 +315,7 @@ describe("ERC-1155 Token Function Tests", () => {
                     1,
                     []
                 )
-            ).to.be.revertedWith("ERC1155: transfer to the zero address")
+            ).to.be.revertedWith("transfer to the zero address")
         })
 
         it("Cannot safeBatchTransferFrom to zero address", async () => {
@@ -318,7 +327,7 @@ describe("ERC-1155 Token Function Tests", () => {
                     [1],
                     []
                 )
-            ).to.be.revertedWith("ERC1155: transfer to the zero address")
+            ).to.be.revertedWith("transfer to the zero address")
         })
 
         it("Cannot safeTransferFrom amount not owned", async () => {
@@ -330,7 +339,7 @@ describe("ERC-1155 Token Function Tests", () => {
                     1,
                     []
                 )
-            ).to.be.revertedWith("ERC1155: insufficient balance for transfer")
+            ).to.be.revertedWith("insufficient balance")
         })
 
         it("Cannot safeBatchTransferFrom amount not owned", async () => {
@@ -342,7 +351,285 @@ describe("ERC-1155 Token Function Tests", () => {
                     [1],
                     []
                 )
-            ).to.be.revertedWith("ERC1155: insufficient balance for transfer")
+            ).to.be.revertedWith("insufficient balance")
+        })
+    })
+
+    describe("ERC-1155 Permit Signature Extension", () => {
+        it("Can derive TYPEHASH", async () => {
+            const byteString = ethers.utils.toUtf8Bytes(
+                'SetPermitForAll(address owner,address operator,bool approved,uint256 nonce,uint256 deadline)'
+            )
+            const SETPERMITFORALL_TYPEHASH = ethers.utils.keccak256(byteString)
+            expect(
+                await ocean.SETPERMITFORALL_TYPEHASH()
+            ).to.equal(SETPERMITFORALL_TYPEHASH)
+        })
+
+        it("Can derive DOMAIN_SEPARATOR", async () => {
+            const typesArray = ['bytes32', 'bytes32', 'bytes32', 'uint256', 'address']
+            const eip712String = ethers.utils.toUtf8Bytes(
+                'EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)'
+            )
+            const name = ethers.utils.toUtf8Bytes('shell-protocol-ocean')
+            const version = ethers.utils.toUtf8Bytes('1')
+            const k256 = ethers.utils.keccak256;
+
+            const DOMAIN_SEPARATOR = k256(ethers.utils.defaultAbiCoder.encode(
+                typesArray,
+                [
+                    k256(eip712String),
+                    k256(name),
+                    k256(version),
+                    31337,
+                    ocean.address
+                ]
+            ))
+            expect(
+                await ocean.DOMAIN_SEPARATOR()
+            ).to.equal(DOMAIN_SEPARATOR)
+        })
+
+        it("Alice can sign permission for Bob, Bob can submit", async () => {
+            expect(
+                await ocean.isApprovedForAll(alice.address, bob.address)
+            ).to.equal(false)
+
+            const owner = alice.address
+            const operator = bob.address
+            const nonce = await ocean.approvalNonces(alice.address)
+            const deadline = ethers.constants.MaxUint256
+            const approved = true
+
+            const { r, s, v } = ethers.utils.splitSignature(
+                await alice._signTypedData(
+                    {
+                        name: 'shell-protocol-ocean',
+                        version: '1',
+                        chainId: 31337,
+                        verifyingContract: ocean.address
+                    },
+                    {
+                        SetPermitForAll: [
+                            { name: 'owner', type: 'address' },
+                            { name: 'operator', type: 'address' },
+                            { name: 'approved', type: 'bool' },
+                            { name: 'nonce', type: 'uint256' },
+                            { name: 'deadline', type: 'uint256' }
+                        ]
+                    },
+                    {
+                        owner,
+                        operator,
+                        approved,
+                        nonce,
+                        deadline
+                    }
+                )
+            )
+            await expect(
+                ocean.connect(bob).setPermitForAll(
+                    alice.address,
+                    bob.address,
+                    true,
+                    deadline,
+                    v,
+                    r,
+                    s
+                )
+            ).to.emit(ocean, "ApprovalForAll").withArgs(alice.address, bob.address, true)
+            expect(
+                await ocean.isApprovedForAll(alice.address, bob.address)
+            ).to.equal(true)
+            await ocean.connect(alice).setApprovalForAll(bob.address, false)
+        })
+
+        it("Cannot submit a signature after the deadline", async () => {
+            expect(
+                await ocean.isApprovedForAll(alice.address, bob.address)
+            ).to.equal(false)
+
+            const owner = alice.address
+            const operator = bob.address
+            const nonce = await ocean.approvalNonces(alice.address)
+            const deadline = 1000
+            const approved = true
+
+            const { r, s, v } = ethers.utils.splitSignature(
+                await alice._signTypedData(
+                    {
+                        name: 'shell-protocol-ocean',
+                        version: '1',
+                        chainId: 31337,
+                        verifyingContract: ocean.address
+                    },
+                    {
+                        SetPermitForAll: [
+                            { name: 'owner', type: 'address' },
+                            { name: 'operator', type: 'address' },
+                            { name: 'approved', type: 'bool' },
+                            { name: 'nonce', type: 'uint256' },
+                            { name: 'deadline', type: 'uint256' }
+                        ]
+                    },
+                    {
+                        owner,
+                        operator,
+                        approved,
+                        nonce,
+                        deadline
+                    }
+                )
+            )
+            await expect(
+                ocean.connect(bob).setPermitForAll(
+                    alice.address,
+                    bob.address,
+                    true,
+                    deadline,
+                    v,
+                    r,
+                    s
+                )
+            ).to.be.reverted;
+
+            expect(
+                await ocean.isApprovedForAll(alice.address, bob.address)
+            ).to.equal(false)
+        })
+
+        it("Cannot sign a transaction for someone else", async () => {
+            expect(
+                await ocean.isApprovedForAll(alice.address, bob.address)
+            ).to.equal(false)
+
+            const owner = alice.address
+            const operator = bob.address
+            const nonce = await ocean.approvalNonces(alice.address)
+            const deadline = ethers.constants.MaxUint256
+            const approved = true
+
+            const { r, s, v } = ethers.utils.splitSignature(
+                await bob._signTypedData(
+                    {
+                        name: 'shell-protocol-ocean',
+                        version: '1',
+                        chainId: 31337,
+                        verifyingContract: ocean.address
+                    },
+                    {
+                        SetPermitForAll: [
+                            { name: 'owner', type: 'address' },
+                            { name: 'operator', type: 'address' },
+                            { name: 'approved', type: 'bool' },
+                            { name: 'nonce', type: 'uint256' },
+                            { name: 'deadline', type: 'uint256' }
+                        ]
+                    },
+                    {
+                        owner,
+                        operator,
+                        approved,
+                        nonce,
+                        deadline
+                    }
+                )
+            )
+            await expect(
+                ocean.connect(bob).setPermitForAll(
+                    alice.address,
+                    bob.address,
+                    true,
+                    deadline,
+                    v,
+                    r,
+                    s
+                )
+            ).to.be.reverted;
+
+            expect(
+                await ocean.isApprovedForAll(alice.address, bob.address)
+            ).to.equal(false)
+        })
+
+        it("Can't ECRECOVER address(0) and steal funds", async () => {
+            expect(
+                await ocean.isApprovedForAll(alice.address, bob.address)
+            ).to.equal(false)
+
+            const owner = alice.address
+            const operator = bob.address
+            const nonce = await ocean.approvalNonces(alice.address)
+            const deadline = ethers.constants.MaxUint256
+            const approved = true
+
+            const { r, s, v } = ethers.utils.splitSignature(
+                await alice._signTypedData(
+                    {
+                        name: 'shell-protocol-ocean',
+                        version: '1',
+                        chainId: 31337,
+                        verifyingContract: ocean.address
+                    },
+                    {
+                        SetPermitForAll: [
+                            { name: 'owner', type: 'address' },
+                            { name: 'operator', type: 'address' },
+                            { name: 'approved', type: 'bool' },
+                            { name: 'nonce', type: 'uint256' },
+                            { name: 'deadline', type: 'uint256' }
+                        ]
+                    },
+                    {
+                        owner,
+                        operator,
+                        approved,
+                        nonce,
+                        deadline
+                    }
+                )
+            )
+            await expect(
+                ocean.connect(bob).setPermitForAll(
+                    alice.address,
+                    bob.address,
+                    true,
+                    deadline,
+                    29,
+                    r,
+                    s
+                )
+            ).to.be.reverted
+            expect(
+                await ocean.isApprovedForAll(alice.address, bob.address)
+            ).to.equal(false)
+        })
+
+        it("Only owner can burn one way fuse", async () => {
+            expect(await ocean.owner()).to.equal(bob.address)
+            await expect(
+                ocean.connect(alice).breakPermitFuse()
+            ).to.be.revertedWith("Ownable: caller is not the owner")
+        })
+
+        it("Owner can burn one way fuse", async () => {
+            await expect(
+                ocean.connect(bob).breakPermitFuse()
+            ).to.emit(ocean, "PermitFuseBroken").withArgs(bob.address)
+        })
+
+        it("Cannot submit a signature once the fuse is broken", async () => {
+            await expect(
+                ocean.connect(bob).setPermitForAll(
+                    alice.address,
+                    bob.address,
+                    true,
+                    ethers.constants.MaxUint256,
+                    27,
+                    ethers.constants.HashZero,
+                    ethers.constants.HashZero
+                )
+            ).to.be.revertedWith("Permit Signature Disabled")
         })
     })
 })

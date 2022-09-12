@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: unlicensed
 // Cowri Labs Inc.
 
-pragma solidity =0.8.4;
+pragma solidity =0.8.10;
 
 /**
  * @title Interface for external contracts that issue tokens on the Ocean's
  *  public multitoken ledger
- * @dev check the implementation in OceanERC1155 for a deeper understanding
+ * @dev Implemented by OceanERC1155.
  */
 interface IOceanToken {
     function registerNewTokens(

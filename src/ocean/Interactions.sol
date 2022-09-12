@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: unlicensed
 // Cowri Labs Inc.
 
-pragma solidity =0.8.4;
+pragma solidity =0.8.10;
 
 /**
  * @param interactionTypeAndAddress the type of interaction and the external
@@ -24,7 +24,7 @@ pragma solidity =0.8.4;
  *  interactions, it is forwarded to the external contract.  The external
  *  contract can define whatever expectations it wants for these 32 bytes.  The
  *  caller is expected to be aware of the expectations of the external contract
- *  invoked during the interaction.  During 721 1155 and wraps and unwraps,
+ *  invoked during the interaction.  During 721/1155 and wraps and unwraps,
  *  these bytes are cast to uint256 and used as the external ledger's token ID
  *  for the interaction.
  */
@@ -45,12 +45,12 @@ struct Interaction {
  *
  * @param WrapErc20
  *      type(externalContract).interfaceId == IERC20
- *      specifiedToken == uint256(uint160(externalContract))
+ *      specifiedToken == calculateOceanId(externalContract, 0)
  *      negative delta can be used as specifiedAmount
  *
  * @param UnwrapErc20
  *      type(externalContract).interfaceId == IERC20
- *      specifiedToken == uint256(uint160(externalContract))
+ *      specifiedToken == calculateOceanId(externalContract, 0)
  *      positive delta can be used as specifiedAmount
  *
  * @param WrapErc721
@@ -91,25 +91,56 @@ enum InteractionType {
     WrapErc1155,
     UnwrapErc1155,
     ComputeInputAmount,
-    ComputeOutputAmount
+    ComputeOutputAmount,
+    UnwrapEther
 }
 
 interface IOceanInteractions {
     function doMultipleInteractions(
         Interaction[] calldata interactions,
         uint256[] calldata ids
-    ) external;
+    )
+        external
+        payable
+        returns (
+            uint256[] memory burnIds,
+            uint256[] memory burnAmounts,
+            uint256[] memory mintIds,
+            uint256[] memory mintAmounts
+        );
 
     function forwardedDoMultipleInteractions(
         Interaction[] calldata interactions,
         uint256[] calldata ids,
         address userAddress
-    ) external;
+    )
+        external
+        payable
+        returns (
+            uint256[] memory burnIds,
+            uint256[] memory burnAmounts,
+            uint256[] memory mintIds,
+            uint256[] memory mintAmounts
+        );
 
-    function doInteraction(Interaction calldata interaction) external;
+    function doInteraction(Interaction calldata interaction)
+        external
+        returns (
+            uint256 burnId,
+            uint256 burnAmount,
+            uint256 mintId,
+            uint256 mintAmount
+        );
 
     function forwardedDoInteraction(
         Interaction calldata interaction,
         address userAddress
-    ) external;
+    )
+        external
+        returns (
+            uint256 burnId,
+            uint256 burnAmount,
+            uint256 mintId,
+            uint256 mintAmount
+        );
 }

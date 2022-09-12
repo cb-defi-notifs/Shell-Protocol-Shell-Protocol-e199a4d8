@@ -3,7 +3,7 @@
 
 // All solidity behavior related comments are in reference to this version of
 // the solc compiler.
-pragma solidity =0.8.4;
+pragma solidity =0.8.10;
 
 // OpenZeppelin ERC Interfaces
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -16,9 +16,6 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 
 // OpenZeppelin Utility Library
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
-// OpenZeppelin inherited contract
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // ShellV2 Interfaces, Data Structures, and Library
 import {IOceanInteractions, Interaction, InteractionType} from "./Interactions.sol";
@@ -34,32 +31,80 @@ import {OceanERC1155} from "./OceanERC1155.sol";
  * @author Cowri Labs Team
  * @dev The ocean is designed to interact with contracts that implement IERC20,
  *  IERC721, IERC-1155, or IOceanPrimitive.
- * @dev We suggest first taking a look at the imported ShellV2 interfaces, data structures, and
- *  the declared events in this file and `./OceanERC1155.sol` to get your bearings.
+ * @dev The ocean is three things.
+ *  1. At the highest level, it is a defi framework[0]. Users provide a list
+ *   of interactions, and the ocean executes those interactions. Each
+ *   interaction involves a call to an external contract. These calls result
+ *   in updates to the ocean's accounting system.
+ *  2. Suporting this defi framework is an accounting system that can transfer,
+ *   mint, or burn tokens. Each token in the accounting system is identified by
+ *   its oceanId. Every oceanId is uniquely derived from an external contract
+ *   address. This external contract is the only contract able to cause mints
+ *   or burns of this token[1].
+ *  3. Supporting this accounting system is an ERC-1155 ledger with all the
+ *   standard ERC-1155 features. Users and primitives can interact with their
+ *   tokens using both the defi framework and the ERC-1155 functions.
+
+ * [0] We call it a framework because the ocean calls predefined functions on
+ *  external contracts at certain points in its exection. The lifecycle is
+ *  managed by the ocean, while the business logic is managed by external
+ *  contracts.  Conceptually this is quite similar to a typical web framework.
+ * [1] For example, when a user wraps an ERC-20 token into the ocean, the
+ *   framework calls the ERC-20 transfer function, and upon success, mints the
+ *   wrapped token to the user. In another case, when a user deposits a base
+ *   token into a liquidity pool to recieve liquidity provider tokens, the
+ *   framework calls the liquidity pool, tells it how much of the base token it
+ *   will receive, and asks it how much of the liquidity provider token it
+ *   would like to mint. When the pool responds, the framework mints this
+ *   amount to the user.
+ *
+ * @dev Getting started tips:
+ *  1. Check out Interactions.sol
+ *  2. Read through the implementation of Ocean.doInteraction(), glossing over
+ *   the function call to _executeInteraction().
+ *  3. Read through the imlementation of Ocean.doMultipleInteractions(), again
+ *   glossing over the function call to _executeInteraction(). When you
+ *   encounter calls to LibBalanceDelta, check out their implementations.
+ *  4. Read through _executeInteraction() and all the functions it calls.
+ *   Understand how this is the line separating the accounting for the external
+ *   contracts and the accounting for the current user.
+ *   You can read the implementations of the specific interactions in any
+ *   order, but it might be good to go through them in order of increasing
+ *   complexity. The called functions, in order of increasing complexity, are:
+ *   wrapErc721, unwrapErc721, wrapErc1155, unwrapErc1155, computeOutputAmount,
+ *   computeInputAmount, unwrapErc20, and wrapErc20.  When you get to 
+ *   computeOutputAmount, check out IOceanPrimitive, IOceanToken, and the
+ *   function registerNewTokens() in OceanERC1155.
  */
 contract Ocean is
     IOceanInteractions,
     IOceanFeeChange,
     OceanERC1155,
-    Ownable,
     IERC721Receiver,
     IERC1155Receiver
 {
     using LibBalanceDelta for BalanceDelta[];
 
+    /// @notice this is the oceanId used for shETH
+    /// @dev hexadecimal(ascii("shETH"))
+    uint256 public immutable WRAPPED_ETHER_ID;
+
     /// @notice Used to calculate the unwrap fee
-    /// unwrapAmount / unwrapFeeDivisor = unwrapFee
+    /// unwrapFee = unwrapAmount / unwrapFeeDivisor
     /// Because this uses integer division, the fee is always rounded down
     /// If unwrapAmount < unwrapFeeDivisor, unwrapFee == 0
     uint256 public unwrapFeeDivisor;
     /// @dev this is equivalent to 5 basis points: 1 / 2000 = 0.05%
+    /// @dev When limited to 5 bips or less an integer divisor is an efficient
+    ///  and precise method of calculating a fee.
     /// @notice As the divisor shrinks, the fee charged grows
     uint256 private constant MIN_UNWRAP_FEE_DIVISOR = 2000;
 
     /// @notice wrapped ERC20 tokens are stored in an 18 decimal representation
-    /// @dev this makes it simpler to implement AMMs between similar tokens
+    /// @dev this makes it easier to implement AMMs between similar tokens
     uint8 private constant NORMALIZED_DECIMALS = 18;
-    /// @notice Used to specify use of an intra-transaction balance delta
+    /// @notice When the specifiedAmount is equal to this value, we set
+    ///  specifiedAmount to the balance delta.
     uint256 private constant GET_BALANCE_DELTA = type(uint256).max;
 
     /// @dev Determines if a transfer callback is expected.
@@ -69,63 +114,73 @@ contract Ocean is
     uint256 private _ERC1155InteractionStatus;
     uint256 private _ERC721InteractionStatus;
 
-    event ChangeUnwrapFee(
-        uint256 indexed oldFee,
-        uint256 indexed newFee,
-        address indexed sender
-    );
+    event ChangeUnwrapFee(uint256 oldFee, uint256 newFee, address sender);
     event Erc20Wrap(
-        address indexed token,
-        uint256 indexed transferredAmount,
-        uint256 indexed wrappedAmount,
+        address indexed erc20Token,
+        uint256 transferredAmount,
+        uint256 wrappedAmount,
         uint256 dust,
-        address user
+        address indexed user,
+        uint256 indexed oceanId
     );
     event Erc20Unwrap(
-        address indexed token,
-        uint256 indexed transferredAmount,
-        uint256 indexed unwrappedAmount,
+        address indexed erc20Token,
+        uint256 transferredAmount,
+        uint256 unwrappedAmount,
         uint256 feeCharged,
-        address user
+        address indexed user,
+        uint256 indexed oceanId
     );
     event Erc721Wrap(
-        address indexed token,
-        uint256 indexed id,
-        address indexed user
+        address indexed erc721Token,
+        uint256 erc721id,
+        address indexed user,
+        uint256 indexed oceanId
     );
     event Erc721Unwrap(
-        address indexed token,
-        uint256 indexed id,
-        address indexed user
+        address indexed erc721Token,
+        uint256 erc721Id,
+        address indexed user,
+        uint256 indexed oceanId
     );
     event Erc1155Wrap(
-        address indexed token,
-        uint256 indexed id,
-        uint256 indexed amount,
-        address user
+        address indexed erc1155Token,
+        uint256 erc1155Id,
+        uint256 amount,
+        address indexed user,
+        uint256 indexed oceanId
     );
     event Erc1155Unwrap(
-        address indexed token,
-        uint256 indexed id,
-        uint256 indexed amount,
+        address indexed erc1155Token,
+        uint256 erc1155Id,
+        uint256 amount,
         uint256 feeCharged,
-        address user
+        address indexed user,
+        uint256 indexed oceanId
     );
+    event EtherWrap(uint256 amount, address indexed user);
+    event EtherUnwrap(uint256 amount, uint256 feeCharged, address indexed user);
     event ComputeOutputAmount(
         address indexed primitive,
-        uint256 indexed inputToken,
-        uint256 indexed outputToken,
+        uint256 inputToken,
+        uint256 outputToken,
         uint256 inputAmount,
         uint256 outputAmount,
-        address user
+        address indexed user
     );
     event ComputeInputAmount(
         address indexed primitive,
-        uint256 indexed inputToken,
-        uint256 indexed outputToken,
+        uint256 inputToken,
+        uint256 outputToken,
         uint256 inputAmount,
         uint256 outputAmount,
-        address user
+        address indexed user
+    );
+    event OceanTransaction(address indexed user, uint256 numberOfInteractions);
+    event ForwardedOceanTransaction(
+        address indexed forwarder,
+        address indexed user,
+        uint256 numberOfInteractions
     );
 
     /**
@@ -139,6 +194,7 @@ contract Ocean is
         unwrapFeeDivisor = type(uint256).max;
         _ERC1155InteractionStatus = NOT_INTERACTION;
         _ERC721InteractionStatus = NOT_INTERACTION;
+        WRAPPED_ETHER_ID = _calculateOceanId(address(0x4574686572), 0); // hexadecimal(ascii("Ether"))
     }
 
     /**
@@ -191,8 +247,15 @@ contract Ocean is
         external
         override
         nonReentrant
+        returns (
+            uint256 burnId,
+            uint256 burnAmount,
+            uint256 mintId,
+            uint256 mintAmount
+        )
     {
-        _doInteraction(interaction, msg.sender);
+        emit OceanTransaction(msg.sender, 1);
+        return _doInteraction(interaction, msg.sender);
     }
 
     /**
@@ -208,8 +271,20 @@ contract Ocean is
     function doMultipleInteractions(
         Interaction[] calldata interactions,
         uint256[] calldata ids
-    ) external override nonReentrant {
-        _doMultipleInteractions(interactions, ids, msg.sender);
+    )
+        external
+        payable
+        override
+        nonReentrant
+        returns (
+            uint256[] memory burnIds,
+            uint256[] memory burnAmounts,
+            uint256[] memory mintIds,
+            uint256[] memory mintAmounts
+        )
+    {
+        emit OceanTransaction(msg.sender, interactions.length);
+        return _doMultipleInteractions(interactions, ids, msg.sender);
     }
 
     /**
@@ -225,8 +300,20 @@ contract Ocean is
     function forwardedDoInteraction(
         Interaction calldata interaction,
         address userAddress
-    ) external override nonReentrant onlyApprovedForwarder(userAddress) {
-        _doInteraction(interaction, userAddress);
+    )
+        external
+        override
+        nonReentrant
+        onlyApprovedForwarder(userAddress)
+        returns (
+            uint256 burnId,
+            uint256 burnAmount,
+            uint256 mintId,
+            uint256 mintAmount
+        )
+    {
+        emit ForwardedOceanTransaction(msg.sender, userAddress, 1);
+        return _doInteraction(interaction, userAddress);
     }
 
     /**
@@ -245,8 +332,25 @@ contract Ocean is
         Interaction[] calldata interactions,
         uint256[] calldata ids,
         address userAddress
-    ) external override nonReentrant onlyApprovedForwarder(userAddress) {
-        _doMultipleInteractions(interactions, ids, userAddress);
+    )
+        external
+        payable
+        override
+        nonReentrant
+        onlyApprovedForwarder(userAddress)
+        returns (
+            uint256[] memory burnIds,
+            uint256[] memory burnAmounts,
+            uint256[] memory mintIds,
+            uint256[] memory mintAmounts
+        )
+    {
+        emit ForwardedOceanTransaction(
+            msg.sender,
+            userAddress,
+            interactions.length
+        );
+        return _doMultipleInteractions(interactions, ids, userAddress);
     }
 
     /**
@@ -334,7 +438,15 @@ contract Ocean is
     function _doInteraction(
         Interaction calldata interaction,
         address userAddress
-    ) internal {
+    )
+        internal
+        returns (
+            uint256 inputToken,
+            uint256 inputAmount,
+            uint256 outputToken,
+            uint256 outputAmount
+        )
+    {
         // Begin by unpacking the interaction type and the external contract
         (
             InteractionType interactionType,
@@ -343,7 +455,7 @@ contract Ocean is
 
         // Determine the specified token based on the interaction type and the
         // interaction's external contract address, inputToken, outputToken,
-        // and metadata fields.  The specified token is the token
+        // and metadata fields. The specified token is the token
         // whose amount the user specifies.
         uint256 specifiedToken = _getSpecifiedToken(
             interactionType,
@@ -357,18 +469,18 @@ contract Ocean is
         // respective amounts. This abstraction is what lets us treat
         // interactions uniformly.
         (
-            uint256 inputToken,
-            uint256 inputAmount,
-            uint256 outputToken,
-            uint256 outputAmount
+            inputToken,
+            inputAmount,
+            outputToken,
+            outputAmount
         ) = _executeInteraction(
-                interaction,
-                interactionType,
-                externalContract,
-                specifiedToken,
-                interaction.specifiedAmount,
-                userAddress
-            );
+            interaction,
+            interactionType,
+            externalContract,
+            specifiedToken,
+            interaction.specifiedAmount,
+            userAddress
+        );
 
         // if _executeInteraction returned a positive value for inputAmount,
         // this amount must be deducted from the user's Ocean balance
@@ -402,10 +514,33 @@ contract Ocean is
         Interaction[] calldata interactions,
         uint256[] calldata ids,
         address userAddress
-    ) internal {
+    )
+        internal
+        returns (
+            uint256[] memory burnIds,
+            uint256[] memory burnAmounts,
+            uint256[] memory mintIds,
+            uint256[] memory mintAmounts
+        )
+    {
         // Use the passed ids to create an array of balance deltas, used in
         // the intra-transaction accounting system.
-        BalanceDelta[] memory balanceDeltas = _createBalanceDeltasArray(ids);
+        BalanceDelta[] memory balanceDeltas = new BalanceDelta[](ids.length);
+        for (uint256 i = 0; i < ids.length; ++i) {
+            balanceDeltas[i] = BalanceDelta(ids[i], 0);
+        }
+
+        // Ether payments are push only.  We always wrap ERC-X tokens using pull
+        // payments, so we cannot wrap Ether using the same pattern.
+        // We unwrap ERC-X tokens using push payments, so we can unwrap Ether
+        // the same way.
+        if (msg.value != 0) {
+            // If msg.value != 0 and the user did not pass the WRAPPED_ETHER_ID
+            // as an id in the ids array, the balance delta library will revert
+            // This protects users who accidentally provide a msg.value.
+            balanceDeltas.increaseBalanceDelta(WRAPPED_ETHER_ID, msg.value);
+            emit EtherWrap(msg.value, userAddress);
+        }
 
         // Execute the interactions
         {
@@ -415,17 +550,17 @@ contract Ocean is
              * @dev We passed interactions as calldata to lower memory usage.
              *  However, accessing the members of a calldata structure uses
              *  more local identifiers than accessing the members of an
-             *  in-memory structure.  We're right up against the limit on
-             *  local identifiers.  To solve this, we allocate a single
+             *  in-memory structure. We're right up against the limit on
+             *  local identifiers. To solve this, we allocate a single
              *  structure in memory and copy the calldata structures over one
              *  by one as we process them.
              */
             Interaction memory interaction;
             // This pulls the user's address to the top of the stack, above
-            // the ids array, which we won't need again.  We're right up against
-            // the locals limit and this does the trick.  Is there a better way?
+            // the ids array, which we won't need again. We're right up against
+            // the locals limit and this does the trick. Is there a better way?
             address userAddress_ = userAddress;
-            for (uint256 i = 0; i < interactions.length; i++) {
+            for (uint256 i = 0; i < interactions.length; ++i) {
                 interaction = interactions[i];
 
                 (
@@ -440,11 +575,10 @@ contract Ocean is
                     interaction
                 );
 
-                // For interactions processed in _doMultipleInteractions(),
-                // if the specifiedAmount is uint256.max,the user is specifying
-                // that this interaction should use the intra-transaction delta
-                // for the sepcifiedAmount. Otherwise, the specifiedAmount is
-                // just the amount the user passed for this interaction.
+                // A user can pass uint256.max as the specifiedAmount when they
+                // want to use the total amount of the token held in the
+                // balance delta. Otherwise, the specifiedAmount is just the
+                // amount the user passed for this interaction.
                 uint256 specifiedAmount;
                 if (interaction.specifiedAmount == GET_BALANCE_DELTA) {
                     specifiedAmount = balanceDeltas.getBalanceDelta(
@@ -490,12 +624,8 @@ contract Ocean is
         {
             // Place positive deltas into mintIds and mintAmounts
             // Place negative deltas into burnIds and burnAmounts
-            (
-                uint256[] memory mintIds,
-                uint256[] memory mintAmounts,
-                uint256[] memory burnIds,
-                uint256[] memory burnAmounts
-            ) = balanceDeltas.createMintAndBurnArrays();
+            (mintIds, mintAmounts, burnIds, burnAmounts) = balanceDeltas
+                .createMintAndBurnArrays();
 
             // Here we should know that uint[] memory arr = new uint[](0);
             // produces a reference to an empty array called arr with property
@@ -539,7 +669,7 @@ contract Ocean is
      * @param specifiedAmount the amount of specifiedToken being used in this
      *  interaction
      * @param userAddress the address of the user this interaction is being
-     *  executed on behalf of.  This is passed to the external contract.
+     *  executed on behalf of. This is passed to the external contract.
      * @return inputToken The token on the Ocean that the user is giving up
      * @return inputAmount The amount of inputToken that the user is giving up
      * @return outputToken The token on the Ocean that the user is gaining
@@ -590,16 +720,26 @@ contract Ocean is
             inputAmount = 0;
             outputToken = specifiedToken;
             outputAmount = specifiedAmount;
-            _erc20Wrap(externalContract, specifiedAmount, userAddress);
+            _erc20Wrap(
+                externalContract,
+                outputAmount,
+                userAddress,
+                outputToken
+            );
         } else if (interactionType == InteractionType.UnwrapErc20) {
             inputToken = specifiedToken;
             inputAmount = specifiedAmount;
             outputToken = 0;
             outputAmount = 0;
-            _erc20Unwrap(externalContract, specifiedAmount, userAddress);
+            _erc20Unwrap(
+                externalContract,
+                inputAmount,
+                userAddress,
+                inputToken
+            );
         } else if (interactionType == InteractionType.WrapErc721) {
             // An ERC-20 or ERC-1155 contract can have a transfer with
-            // any amount including zero.  Here, we need to require that
+            // any amount including zero. Here, we need to require that
             // the specifiedAmount is equal to one, since the external
             // call to the ERC-721 contract does not include an amount,
             // and the ledger is mutated based on the specifiedAmount.
@@ -611,7 +751,8 @@ contract Ocean is
             _erc721Wrap(
                 externalContract,
                 uint256(interaction.metadata),
-                userAddress
+                userAddress,
+                outputToken
             );
         } else if (interactionType == InteractionType.UnwrapErc721) {
             // See the comment in the preceeding else if block.
@@ -623,7 +764,8 @@ contract Ocean is
             _erc721Unwrap(
                 externalContract,
                 uint256(interaction.metadata),
-                userAddress
+                userAddress,
+                inputToken
             );
         } else if (interactionType == InteractionType.WrapErc1155) {
             inputToken = 0;
@@ -633,22 +775,32 @@ contract Ocean is
             _erc1155Wrap(
                 externalContract,
                 uint256(interaction.metadata),
-                specifiedAmount,
-                userAddress
+                outputAmount,
+                userAddress,
+                outputToken
             );
-        } else {
-            assert(interactionType == InteractionType.UnwrapErc1155);
+        } else if (interactionType == InteractionType.UnwrapErc1155) {
             inputToken = specifiedToken;
             inputAmount = specifiedAmount;
             outputToken = 0;
             outputAmount = 0;
             _erc1155Unwrap(
-                specifiedToken,
                 externalContract,
                 uint256(interaction.metadata),
-                specifiedAmount,
-                userAddress
+                inputAmount,
+                userAddress,
+                inputToken
             );
+        } else {
+            assert(
+                interactionType == InteractionType.UnwrapEther &&
+                    specifiedToken == WRAPPED_ETHER_ID
+            );
+            inputToken = specifiedToken;
+            inputAmount = specifiedAmount;
+            outputToken = 0;
+            outputAmount = 0;
+            _etherUnwrap(inputAmount, userAddress);
         }
     }
 
@@ -673,7 +825,7 @@ contract Ocean is
      * @param interactionType determines how we derive the specifiedToken
      * @param externalContract is the target of the interaction's external call
      * @param interaction the interaction's fields are interpreted based on
-     *  the Interaction type.  See the declarations in Interactions.sol
+     *  the Interaction type. See the declarations in Interactions.sol
      * @return specifiedToken is the ocean's internal ID for the token in a
      *  interaction that's amount is specified by the user.
      */
@@ -681,12 +833,12 @@ contract Ocean is
         InteractionType interactionType,
         address externalContract,
         Interaction memory interaction
-    ) internal pure returns (uint256 specifiedToken) {
+    ) internal view returns (uint256 specifiedToken) {
         if (
             interactionType == InteractionType.WrapErc20 ||
             interactionType == InteractionType.UnwrapErc20
         ) {
-            specifiedToken = uint256(uint160(externalContract));
+            specifiedToken = _calculateOceanId(externalContract, 0);
         } else if (
             interactionType == InteractionType.WrapErc721 ||
             interactionType == InteractionType.WrapErc1155 ||
@@ -699,32 +851,11 @@ contract Ocean is
             );
         } else if (interactionType == InteractionType.ComputeInputAmount) {
             specifiedToken = interaction.outputToken;
-        } else {
-            assert(interactionType == InteractionType.ComputeOutputAmount);
+        } else if (interactionType == InteractionType.ComputeOutputAmount) {
             specifiedToken = interaction.inputToken;
-        }
-    }
-
-    /**
-     * @dev Uses the passed `ids` to create an array of BalanceDeltas
-     * @dev See the block comment in OceanStructs above the BalanceDelta
-     *  declaration
-     * @dev The library for interacting with arrays of BalanceDeltas is
-     *  implemented in such a way that we do not need to validate the passed
-     *  ids against the passed interactions. See the block comment at the top
-     *  of LibBalanceDelta.sol for an explanation.
-     * @param ids the ID of the tokens on the Ocean's that are touched in this
-     *  transaction.
-     * @return balanceDeltas an array with a BalanceDelta for each passed id
-     */
-    function _createBalanceDeltasArray(uint256[] calldata ids)
-        internal
-        pure
-        returns (BalanceDelta[] memory balanceDeltas)
-    {
-        balanceDeltas = new BalanceDelta[](ids.length);
-        for (uint256 i = 0; i < ids.length; i++) {
-            balanceDeltas[i] = BalanceDelta(ids[i], 0);
+        } else {
+            assert(interactionType == InteractionType.UnwrapEther);
+            specifiedToken = WRAPPED_ETHER_ID;
         }
     }
 
@@ -732,7 +863,7 @@ contract Ocean is
      * @dev A primitive is an external smart contract that establishes a market
      *  between two or more tokens.
      * @dev the external contract's Ocean balances are mutated
-     *  immediately after the external call returns.  If the external
+     *  immediately after the external call returns. If the external
      *  contract does not want to receive the inputToken, it should revert
      *  the transaction.
      * @param primitive A contract that implements IOceanPrimitive
@@ -785,7 +916,7 @@ contract Ocean is
      * @dev A primitive is an external smart contract that establishes a market
      *  between two or more tokens.
      * @dev the external contract's Ocean balances are mutated
-     *  immediately after the external call returns.  If the external
+     *  immediately after the external call returns. If the external
      *  contract does not want to receive the outputToken, it should revert
      *  the transaction.
      * @param primitive A contract that implements IOceanPrimitive
@@ -835,8 +966,8 @@ contract Ocean is
     }
 
     /**
-     * @dev Wrap an ERC-20 token into the ocean.  The Ocean ID is
-     *  the same as the ERC-20 contract's address.
+     * @dev Wrap an ERC-20 token into the ocean. The Ocean ID is
+     *  derived from the contract address and a tokenId of 0.
      * @notice Token amounts are normalized to 18 decimal places.
      * @dev This means that to wrap 5 units of token A, which has 6 decimals,
      *  and 5 units of token B, which has 18 decimals, the user would specify
@@ -849,7 +980,8 @@ contract Ocean is
     function _erc20Wrap(
         address tokenAddress,
         uint256 amount,
-        address userAddress
+        address userAddress,
+        uint256 outputToken
     ) private {
         try IERC20Metadata(tokenAddress).decimals() returns (uint8 decimals) {
             /// @dev the amount passed as an argument to the external token
@@ -860,11 +992,11 @@ contract Ocean is
             (transferAmount, dust) = _determineTransferAmount(amount, decimals);
 
             // If the user is unwrapping a delta, the residual dust could be
-            // written to the user's ledger balance.  However, it costs the
+            // written to the user's ledger balance. However, it costs the
             // same amount of gas to place the dust on the owner's balance,
             // and accumulation of dust may eventually result in
             // transferrable units again.
-            _grantFeeToOcean(uint256(uint160(tokenAddress)), dust);
+            _grantFeeToOcean(outputToken, dust);
 
             SafeERC20.safeTransferFrom(
                 IERC20(tokenAddress),
@@ -878,7 +1010,8 @@ contract Ocean is
                 transferAmount,
                 amount,
                 dust,
-                userAddress
+                userAddress,
+                outputToken
             );
         } catch {
             revert("Could not get decimals()");
@@ -886,11 +1019,11 @@ contract Ocean is
     }
 
     /**
-     * @dev Unwrap an ERC-20 token out of the ocean.  The Ocean ID is
-     *  the same as the ERC-20 contract's address.
+     * @dev Unwrap an ERC-20 token out of the ocean. The Ocean ID is
+     *  derived from the contract address and a tokenId of 0.
      * @notice tokens are normalized to 18 decimal places.
      * @notice unwrap amounts may be subject to a fee that reduces the amount
-     *  moved on the external token's ledger.  To unwrap an exact amount, the
+     *  moved on the external token's ledger. To unwrap an exact amount, the
      *  caller should compute off-chain what specifiedAmount results in the
      *  desired unwrap amount.
      * @dev This means that to wrap 5 units of token A, which has 6 decimals,
@@ -908,7 +1041,8 @@ contract Ocean is
     function _erc20Unwrap(
         address tokenAddress,
         uint256 amount,
-        address userAddress
+        address userAddress,
+        uint256 inputToken
     ) private {
         try IERC20Metadata(tokenAddress).decimals() returns (uint8 decimals) {
             uint256 feeCharged = _calculateUnwrapFee(amount);
@@ -921,7 +1055,7 @@ contract Ocean is
             );
             feeCharged += truncated;
 
-            _grantFeeToOcean(uint256(uint160(tokenAddress)), feeCharged);
+            _grantFeeToOcean(inputToken, feeCharged);
 
             SafeERC20.safeTransfer(
                 IERC20(tokenAddress),
@@ -933,7 +1067,8 @@ contract Ocean is
                 transferAmount,
                 amount,
                 feeCharged,
-                userAddress
+                userAddress,
+                inputToken
             );
         } catch {
             revert("Could not get decimals()");
@@ -941,7 +1076,7 @@ contract Ocean is
     }
 
     /**
-     * @dev wrap an ERC-721 NFT into the Ocean.  The Ocean ID is derived from
+     * @dev wrap an ERC-721 NFT into the Ocean. The Ocean ID is derived from
      *  tokenAddress and tokenId.
      * @param tokenAddress address of the ERC-721 contract
      * @param tokenId ID of the NFT on the ERC-721 ledger
@@ -950,7 +1085,8 @@ contract Ocean is
     function _erc721Wrap(
         address tokenAddress,
         uint256 tokenId,
-        address userAddress
+        address userAddress,
+        uint256 oceanId
     ) private {
         _ERC721InteractionStatus = INTERACTION;
         IERC721(tokenAddress).safeTransferFrom(
@@ -959,11 +1095,11 @@ contract Ocean is
             tokenId
         );
         _ERC721InteractionStatus = NOT_INTERACTION;
-        emit Erc721Wrap(tokenAddress, tokenId, userAddress);
+        emit Erc721Wrap(tokenAddress, tokenId, userAddress, oceanId);
     }
 
     /**
-     * @dev Unwrap an ERC-721 NFT out of the Ocean.  The Ocean ID is derived
+     * @dev Unwrap an ERC-721 NFT out of the Ocean. The Ocean ID is derived
      *  from tokenAddress and tokenId.
      * @param tokenAddress address of the ERC-721 contract
      * @param tokenId ID of the NFT on the ERC-721 ledger
@@ -972,22 +1108,21 @@ contract Ocean is
     function _erc721Unwrap(
         address tokenAddress,
         uint256 tokenId,
-        address userAddress
+        address userAddress,
+        uint256 oceanId
     ) private {
-        _ERC721InteractionStatus = INTERACTION;
         IERC721(tokenAddress).safeTransferFrom(
             address(this),
             userAddress,
             tokenId
         );
-        _ERC721InteractionStatus = NOT_INTERACTION;
-        emit Erc721Unwrap(tokenAddress, tokenId, userAddress);
+        emit Erc721Unwrap(tokenAddress, tokenId, userAddress, oceanId);
     }
 
     /**
-     * @dev Wrap an ERC-1155 token into the Ocean.  The Ocean ID is derived
+     * @dev Wrap an ERC-1155 token into the Ocean. The Ocean ID is derived
      *  from tokenAddress and tokenId.
-     * @notice ERC-1155 amounts and in-Ocean amounts are equal.  If a token
+     * @notice ERC-1155 amounts and in-Ocean amounts are equal. If a token
      *  implemented using ERC-1155 should have the same value as other tokens
      *  implemented using ERC-20, the ERC-1155 should use an 18-decimal
      *  representation.
@@ -1000,8 +1135,10 @@ contract Ocean is
         address tokenAddress,
         uint256 tokenId,
         uint256 amount,
-        address userAddress
+        address userAddress,
+        uint256 oceanId
     ) private {
+        require(tokenAddress != address(this), "No recursive wraps");
         _ERC1155InteractionStatus = INTERACTION;
         IERC1155(tokenAddress).safeTransferFrom(
             userAddress,
@@ -1011,20 +1148,20 @@ contract Ocean is
             ""
         );
         _ERC1155InteractionStatus = NOT_INTERACTION;
-        emit Erc1155Wrap(tokenAddress, tokenId, amount, userAddress);
+        emit Erc1155Wrap(tokenAddress, tokenId, amount, userAddress, oceanId);
     }
 
     /**
-     * @dev Wrap an ERC-1155 token into the Ocean.  The Ocean ID is derived
+     * @dev Unwrap an ERC-1155 token out of the Ocean. The Ocean ID is derived
      *  from tokenAddress and tokenId.
-     * @notice ERC-1155 amounts and in-Ocean amounts are equal.  If a token
+     * @notice ERC-1155 amounts and in-Ocean amounts are equal. If a token
      *  implemented using ERC-1155 should have the same value as other tokens
      *  implemented using ERC-20, the ERC-1155 should use an 18-decimal
      *  representation.
      * @notice unwrap amounts may be subject to a fee that reduces the amount
-     *  moved on the external token's ledger.  To unwrap an exact amount, the
+     *  moved on the external token's ledger. To unwrap an exact amount, the
      *  caller should compute off-chain what specifiedAmount results in the
-     *  desired unwrap amount.  If the user wants to receive 100_000 of a token
+     *  desired unwrap amount. If the user wants to receive 100_000 of a token
      *  and the fee is 1 basis point, the user should specify 100_010
      *  This value was found by solving for x in the equation:
      *      x - Floor[x * (1/10000)] = 100000
@@ -1034,16 +1171,16 @@ contract Ocean is
      * @param userAddress the address of the user who is wrapping the token
      */
     function _erc1155Unwrap(
-        uint256 specifiedToken,
         address tokenAddress,
         uint256 tokenId,
         uint256 amount,
-        address userAddress
+        address userAddress,
+        uint256 oceanId
     ) private {
+        require(tokenAddress != address(this), "No recursive unwraps");
         uint256 feeCharged = _calculateUnwrapFee(amount);
         uint256 amountRemaining = amount - feeCharged;
-        _grantFeeToOcean(specifiedToken, feeCharged);
-        _ERC1155InteractionStatus = INTERACTION;
+        _grantFeeToOcean(oceanId, feeCharged);
         IERC1155(tokenAddress).safeTransferFrom(
             address(this),
             userAddress,
@@ -1051,27 +1188,42 @@ contract Ocean is
             amountRemaining,
             ""
         );
-        _ERC1155InteractionStatus = NOT_INTERACTION;
         emit Erc1155Unwrap(
             tokenAddress,
             tokenId,
             amount,
             feeCharged,
-            userAddress
+            userAddress,
+            oceanId
         );
     }
 
     /**
-     * @notice If the primitive has authority over the inputToken, it does not
+     * @dev Unwrap Ether out of the ocean.  The Ocean ID of shETH is computed
+     *  in the constructor using the address of the ocean and a tokenId of 0.
+     * @param amount The amount of Ether to unwrap.
+     * @param userAddress The user performing the unwrap.
+     */
+    function _etherUnwrap(uint256 amount, address userAddress) private {
+        uint256 feeCharged = _calculateUnwrapFee(amount);
+        _grantFeeToOcean(WRAPPED_ETHER_ID, feeCharged);
+        uint256 transferAmount = amount - feeCharged;
+        payable(userAddress).transfer(transferAmount);
+        emit EtherUnwrap(transferAmount, feeCharged, userAddress);
+    }
+
+    /**
+     * @notice If the primitive registered the inputToken, it does not
      *  receive any of the inputToken.
-     * @notice If the primitive has authority over the outputToken, it does not
+     * @notice If the primitive registered the outputToken, it does not
      *  lose any of the outputToken.
+     * @notice look at the public function registerNewTokens()
      * @notice We cannot keep the primitive's balance changes in memory.
      *  A primitive relies on the ocean for its accounting, so it must always
      *  receive a correct answer when it queries balanceOf() or
      *  balanceOfBatch().
      *  When the ocean receives a balanceOf() call, this call has its own
-     *  memory space.  The ocean cannot reach down through the call stack to
+     *  memory space. The ocean cannot reach down through the call stack to
      *  get a delta stored in the memory of an earlier call.
      *      primitive -> ocean.balanceOf(address(this), token)  [mem_space_2]
      *      ocean -> primitive.computeOutputAmount()          [mem_space_1]
@@ -1087,14 +1239,16 @@ contract Ocean is
         uint256 outputToken,
         uint256 outputAmount
     ) internal {
-        // If the input token is not one of the primitive's tokens, the
-        // primitive receives the input amount it was passed.
+        // If the input token is not one of the primitive's registered tokens,
+        // the primitive receives the input amount it was passed.
         // Otherwise, the tokens will be implicitly burned by the primitive
         // later in the transaction
-        if (_isNotTokenOfPrimitive(inputToken, primitive)) {
+        if (
+            _isNotTokenOfPrimitive(inputToken, primitive) && (inputAmount > 0)
+        ) {
             // Since the primitive consented to receiving this token by not
             // reverting when it was called, we mint the token without
-            // doing a safe transfer acceptance check.  This breaks the
+            // doing a safe transfer acceptance check. This breaks the
             // ERC1155 specification but in a way we hope is inconsequential, since
             // all primitives are developed by people who must be
             // aware of how the ocean works.
@@ -1109,7 +1263,9 @@ contract Ocean is
         // primitive loses the output amount it just computed.
         // Otherwise, the tokens will be implicitly minted by the primitive
         // later in the transaction
-        if (_isNotTokenOfPrimitive(outputToken, primitive)) {
+        if (
+            _isNotTokenOfPrimitive(outputToken, primitive) && (outputAmount > 0)
+        ) {
             _burn(primitive, outputToken, outputAmount);
         }
     }
@@ -1120,7 +1276,7 @@ contract Ocean is
      * @dev Say the in-Ocean unwrap amount (in 18-decimal) is 0.123456789012345678
      *      If the external token uses decimals == 6:
      *          transferAmount == 123456
-     *          dust == 89012345678
+     *          dust == 789012345678
      *      If the external token uses decimals == 18:
      *          transferAmount == 123456789012345678
      *          dust == 0
@@ -1140,7 +1296,7 @@ contract Ocean is
         returns (uint256 transferAmount, uint256 dust)
     {
         // if (decimals < 18), then converting 18-decimal amount to decimals
-        // transferAmount will likely result in amount being truncated.  This
+        // transferAmount will likely result in amount being truncated. This
         // case is most likely to occur when a user is wrapping a delta as the
         // final interaction in a transaction.
         uint256 truncated;
@@ -1154,7 +1310,7 @@ contract Ocean is
         if (truncated > 0) {
             // Here, FLOORish(x) is not to the nearest integer less than `x`,
             // but rather to the nearest value with `decimals` precision less
-            // than `x`.  Likewise with CEILish(x).
+            // than `x`. Likewise with CEILish(x).
             // When truncating, transferAmount is FLOORish(amount), but to
             // fully cover a potential delta, we need to transfer CEILish(amount)
             // if truncated == 0, FLOORish(amount) == CEILish(amount)
@@ -1165,11 +1321,11 @@ contract Ocean is
             // wrapping, in terms of 18-decimals.
             (
                 uint256 normalizedTransferAmount,
-                uint256 MUST_BE_ZERO
+                uint256 normalizedTruncatedAmount
             ) = _convertDecimals(decimals, NORMALIZED_DECIMALS, transferAmount);
             // If we truncated earlier, converting the other direction is adding
             // precision, which cannot truncate.
-            assert(MUST_BE_ZERO == 0);
+            assert(normalizedTruncatedAmount == 0);
             assert(normalizedTransferAmount > amount);
             dust = normalizedTransferAmount - amount;
         } else {
@@ -1209,8 +1365,8 @@ contract Ocean is
         } else {
             // Decimal shift right (remove precision) -> truncation
             uint256 shift = 10**(uint256(decimalsFrom - decimalsTo));
-            truncatedAmount = amountToConvert % shift;
             convertedAmount = amountToConvert / shift;
+            truncatedAmount = amountToConvert % shift;
         }
     }
 
@@ -1235,9 +1391,10 @@ contract Ocean is
      * @dev Updates the DAO's balance of a token when the fee is assessed.
      * @dev We only call the mint function when the fee amount is non-zero.
      */
-    function _grantFeeToOcean(uint256 token, uint256 amount) private {
-        if (amount != 0) {
-            _mintWithoutSafeTransferAcceptanceCheck(owner(), token, amount);
+    function _grantFeeToOcean(uint256 oceanId, uint256 amount) private {
+        if (amount > 0) {
+            // since uint, same as (amount != 0)
+            _mintWithoutSafeTransferAcceptanceCheck(owner(), oceanId, amount);
         }
     }
 }

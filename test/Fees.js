@@ -53,6 +53,7 @@ describe("Fee mechanism tests", () => {
         const decimals = "18"
         const mintAmount = shellV2.utils.numberWithFixedDecimals({ number: "100", decimals })
         let erc20Token
+        let erc20TokenOceanId
         const jsIds = ["5", "1337", "1795", "23904823094852039583409", "1", "42"]
         const bigNumIds = jsIds.map((id) => ethers.BigNumber.from(id))
         const mintAmounts = jsIds.map(() => mintAmount)
@@ -85,6 +86,7 @@ describe("Fee mechanism tests", () => {
                 erc20Contract.deploy(mintAmount, decimals),
                 erc1155Contract.deploy(bigNumIds, mintAmounts)
             ])
+            erc20TokenOceanId = shellV2.utils.calculateWrappedTokenId({ address: erc20Token.address, id: 0 })
         })
 
         describe("ERC-20 one bip fee", () => {
@@ -100,14 +102,14 @@ describe("Fee mechanism tests", () => {
                 })
             })
             it("Unwrap < 10,000 tokens, no fee", async () => {
-                expect(await ocean.balanceOf(bob.address, erc20Token.address)).to.equal(0)
-                expect(await ocean.balanceOf(alice.address, erc20Token.address)).to.equal(mintAmount)
+                expect(await ocean.balanceOf(bob.address, erc20TokenOceanId)).to.equal(0)
+                expect(await ocean.balanceOf(alice.address, erc20TokenOceanId)).to.equal(mintAmount)
                 const unwrapAmount = "5000"
                 const expectedFee = "0"
                 await unwrapWithExpects({
                     alice,
                     bob,
-                    oceanId: erc20Token.address,
+                    oceanId: erc20TokenOceanId,
                     unwrapAmount,
                     expectedFee,
                     interaction: shellV2.interactions.unwrapERC20({
@@ -123,7 +125,7 @@ describe("Fee mechanism tests", () => {
                 await unwrapWithExpects({
                     alice,
                     bob,
-                    oceanId: erc20Token.address,
+                    oceanId: erc20TokenOceanId,
                     unwrapAmount,
                     expectedFee,
                     interaction: shellV2.interactions.unwrapERC20({
@@ -139,7 +141,7 @@ describe("Fee mechanism tests", () => {
                 await unwrapWithExpects({
                     alice,
                     bob,
-                    oceanId: erc20Token.address,
+                    oceanId: erc20TokenOceanId,
                     unwrapAmount,
                     expectedFee,
                     interaction: shellV2.interactions.unwrapERC20({
