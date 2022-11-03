@@ -1,4 +1,8 @@
-# Shell v2 Ocean
+# Ocean + Proteus Repo
+The first section of this README applies to the Ocean, which is built and tested using hardhat.
+
+The second section of this README applies to Proteus, which is built and tested using foundry.
+# The Ocean
 
 If you aren't familiar with solidity, the [white paper](Ocean_-_Shell_v2_Part_2.pdf) outlines the high level behavior and the key implementation details of the code in this repository.
 
@@ -60,3 +64,23 @@ to install the development environment, and then you can run
 npm run coverage
 ```
 The coverage report will be located at `coverage/index.html`, and can be viewed with your web browser.
+
+# Proteus
+## Installation
+This project was built using Foundry, which you can install here: https://onbjerg.github.io/foundry-book/getting-started/installation.html
+
+The Proteus smart contract can be tested by running `forge test` from the root directory of the repository.
+
+## Getting started
+A high level overview of the Proteus algorithm is covered in the update Notion whitepaper. The updated document references sections of the original white paper, which is also included in this repo.
+### Explainer
+https://shell-protocol.notion.site/Proteus-White-Paper-3-7f33b7e1561347b696874a8ba02b9782
+### Visualization
+https://www.desmos.com/calculator/0rq42rdkec
+## Invariants
+We are worried about two things:
+ - The pool being left in a state (xBalance, yBalance, totalSupply) where there is no action (swapGivenInputAmount, depositGivenInputAmount, withdrawGivenInputAmount, swapGivenOutputAmount, depositGivenOutputAmount, withdrawGivenOutputAmount) with any arguments (using x or y, amount input or output) that can succeed.  This would mean a Denial of Service.
+ - Utility Per Shell (UPS) not monotonically increasing (barring insignificant noise).  This is easy to evaluate when Proteus mimics constant product, as the utility in one slice is directly comparable to the utility in another.  When Proteus is in any other configuration, utility in different slices is not comparable.  One way we have for testing UPS in other configurations is by reversing actions.  A swap, followed by a swap in the opposite direction to nearly the same point, should never cause utility to decrease.  Similarly for deposits and withdraws.
+
+## The property tests and how they relate to the invariants
+The property tests can fail because an argument is out of bounds in an unanticipated way.  This causes the test to fail due to an unexpected revert.  Short of rebuilding the proteus model within the property tests, there is not a great way of solving this, though we did our best.  A property test that fails is only concerning if it fails due to UPS monotonicity being violated, or if it fails due to a previous action leaving the pool in a DoS state.
