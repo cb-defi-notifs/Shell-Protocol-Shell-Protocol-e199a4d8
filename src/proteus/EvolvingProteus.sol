@@ -22,16 +22,17 @@ struct Config {
      x_init: the initial price at the x axis
      y_final: the final price at the y axis
      x_final: the final price at the x axis
-     time: the total duration of the curve's evolution (e.g. the amount of time it should take to evolve from the initial prices to the final prices)
-     using these 5 inputs we can calculate the curve's parameters at every point in time. 
+     time: the total duration of the curve's evolution (e.g. the amount of time it should take to evolve from the initial to the final prices)
+     
+     Using these 5 inputs we can calculate the curve's parameters at every point in time. 
      
      The parameters "a" and "b" are calculated from the price. a = 1/sqrt(y_axis_price) and b = sqrt(x_axis_price). 
      We calculate a(t) and b(t) by taking the time-dependant linear interpolate between the initial and final values. 
      In other words, a(t) = (a_init * (1-t)) + (a_final * (t)) and b(t) = (b_init * (1-t)) + (b_final * (t)), where "t"
-     is the percentage of time elapsed relative to the total specified duration of evolution. Since 
+     is the percentage of time elapsed relative to the total specified duration. Since 
      a_init, a_final, b_init and b_final can be easily calculated from the input parameters (prices), this is a trivial
      calculation. config.a() and config.b() are then called whenever a and b are needed, and return the correct value for
-     a or b and the time t. 
+     a or b and the time t. When the total duration is reached, t remains = 1 and the curve will remain in its final shape. 
 */
 
 library LibConfig {
@@ -40,12 +41,12 @@ library LibConfig {
     using ABDKMath64x64 for int128;
 
     /**
-       @notice Calculates the equation parameters "a" & "b" described above & return the config instance
+       @notice Calculates the equation parameters "a" & "b" described above & returns the config instance
        @param y_init The initial price at the y axis
        @param x_init The initial price at the x axis
        @param y_final The final price at the y axis
        @param x_final The final price at the y axis
-       @param _duration duration for which the curve will evolve
+       @param _duration duration over which the curve will evolve
      */
     function newConfig(
         int128 y_init,
@@ -80,7 +81,7 @@ library LibConfig {
     }
 
     /**
-       @notice Calculates the time that has been elasped since deployment
+       @notice Calculates the time as a percent of total duration
        @param self config instance
     */
     function t(Config storage self) public view returns (int128) {
@@ -109,7 +110,7 @@ library LibConfig {
 
 
     /**
-       @notice Calculates the duration set during which the curve will evolve
+       @notice Calculates the duration of evolution
        @param self config instance
     */
     function duration(Config storage self) public view returns (uint256) {
@@ -124,7 +125,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     
     /** 
      @notice 
-     max threshold for amounts to deposited,withdrawan & swapped
+     max threshold for amounts deposited, withdrawn & swapped
     */ 
     uint256 constant INT_MAX = uint256(type(int256).max);
     /** 
@@ -166,12 +167,12 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     int256 constant MULTIPLIER = 1e18;
     /** 
       @notice 
-      flag to indicate increase of the perceived output
+      flag to indicate increase of the pool's perceived input or output
     */ 
     bool constant FEE_UP = true;
     /** 
       @notice 
-      flag to indicate decrease of the perceived output
+      flag to indicate decrease of the pool's perceived input or output
     */ 
     bool constant FEE_DOWN = false;
     /** 
@@ -213,7 +214,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
 
 
     /**
-     * @dev Given an input amount of a reserve token, we compute an output
+     * @dev Given an input amount of one reserve token, we compute the output
      *  amount of the other reserve token, keeping utility invariant.
      * @dev We use FEE_DOWN because we want to decrease the perceived
      *  input amount and decrease the observed output amount.
@@ -247,7 +248,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     }
 
     /**
-     * @dev Given an output amount of a reserve token, we compute an input
+     * @dev Given an output amount of a reserve token, we compute the input
      *  amount of the other reserve token, keeping utility invariant.
      * @dev We use FEE_UP because we want to increase the perceived output
      *  amount and increase the observed input amount.
@@ -281,7 +282,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     }
 
     /**
-     * @dev Given an input amount of a reserve token, we compute an output
+     * @dev Given an input amount of a reserve token, we compute the output
      *  amount of LP tokens, scaling the total supply of the LP tokens with the
      *  utility of the pool.
      * @dev We use FEE_DOWN because we want to decrease the perceived amount
