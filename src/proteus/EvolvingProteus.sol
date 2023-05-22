@@ -40,12 +40,14 @@ library LibConfig {
     using ABDKMath64x64 for int256;
     using ABDKMath64x64 for int128;
 
+    int128 constant ABDK_ONE = int128(int256(1 << 64));
+
     /**
        @notice Calculates the equation parameters "a" & "b" described above & returns the config instance
        @param y_init The initial price at the y axis
        @param x_init The initial price at the x axis
        @param y_final The final price at the y axis
-       @param x_final The final price at the y axis
+       @param x_final The final price at the x axis
        @param _duration duration over which the curve will evolve
      */
     function newConfig(
@@ -94,8 +96,8 @@ library LibConfig {
        @param self config instance
     */
     function a(Config storage self) public view returns (int128) {
-        if (t(self) > ABDKMath64x64.divu(1e18,1e18)) return self.a_final;
-        else return self.a_init.mul(ABDKMath64x64.divu(1e18,1e18).sub(t(self))).add(self.a_final.mul(t(self)));
+        if (t(self) > ABDK_ONE) return self.a_final;
+        else return self.a_init.mul(ABDK_ONE.sub(t(self))).add(self.a_final.mul(t(self)));
     }
 
     /**
@@ -104,8 +106,8 @@ library LibConfig {
        @param self config instance
     */
     function b(Config storage self) public view returns (int128) {
-        if (t(self) > ABDKMath64x64.divu(1e18,1e18)) return self.b_final;
-        else return self.b_init.mul(ABDKMath64x64.divu(1e18,1e18).sub(t(self))).add(self.b_final.mul(t(self)));
+        if (t(self) > ABDK_ONE) return self.b_final;
+        else return self.b_init.mul(ABDK_ONE.sub(t(self))).add(self.b_final.mul(t(self)));
     }
 
 
@@ -122,7 +124,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     using ABDKMath64x64 for int128;
     using ABDKMath64x64 for int256;
     using LibConfig for Config;
-    
+
     /** 
      @notice 
      max threshold for amounts deposited, withdrawn & swapped
@@ -462,7 +464,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
                 );
             }
         }
-
+        
         if (specifiedToken == SpecifiedToken.X) {
             computedAmount = _applyFeeByRounding(yf - yi, feeDirection);
             _checkBalances(xi + specifiedAmount, yi + computedAmount);
