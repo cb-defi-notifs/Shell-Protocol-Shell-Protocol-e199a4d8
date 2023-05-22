@@ -870,5 +870,4 @@ contract EvolvingProteusProperties is Test {
         assertLe((a0) - (a0 / BASE_FEE) - FIXED_FEE, a1, "not within less than rounding");
         assertGe((a0) + (a0 / BASE_FEE) + FIXED_FEE, a1, "not within greater than rounding");
     }
-
 }  

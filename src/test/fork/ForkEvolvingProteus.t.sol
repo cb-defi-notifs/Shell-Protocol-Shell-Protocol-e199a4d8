@@ -4,17 +4,22 @@ import "forge-std/Test.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../../ocean/Interactions.sol";
 import "../../ocean/Ocean.sol";
+import "../../mocks/ERC20MintsToDeployer.sol";
 import "..//EvolvingInstrumentedProteus.sol";
 import "../../proteus/LiquidityPoolProxy.sol";
 
 contract ForkEvolvingProteus is Test {
+  using ABDKMath64x64 for uint256;
+  using ABDKMath64x64 for int256;
+  using ABDKMath64x64 for int128;
+
   Ocean _ocean = Ocean(0xC32eB36f886F638fffD836DF44C124074cFe3584);
-  IERC20 _tokenA = IERC20(0x912CE59144191C1204E64559FE8253a0e49E6548); //arb
+  ERC20MintsToDeployer _tokenA;
   address tokenOwner = 0x9b64203878F24eB0CDF55c8c6fA7D08Ba0cF77E5;
   EvolvingInstrumentedProteus _evolvingProteus;
   LiquidityPoolProxy _pool;
 
-  uint256 _tokenA_OceanId = uint256(keccak256(abi.encodePacked(address(_tokenA), uint256(0))));
+  uint256 _tokenA_OceanId; // deploying a new token
   uint256 _tokenB_OceanId = 68598205499637732940393479723998335974150219832588297998851264911405221787060;
   uint256 lpTokenId;
   bytes32 interactionIdToComputeOutputAmount;
@@ -24,11 +29,16 @@ contract ForkEvolvingProteus is Test {
 
   int256 constant BASE_FEE = 800; // base fee
   int256 constant FIXED_FEE = 10 ** 9; // rounding fee? idk
-  uint256 constant T_DURATION = 3 days;
+  uint256 constant T_DURATION =  3 days; 
 
   function setUp() public {
     vm.createSelectFork("https://arb1.arbitrum.io/rpc"); // Will start on latest block by default
-  
+
+    vm.prank(tokenOwner);
+    _tokenA = new ERC20MintsToDeployer(100_000 ether, 18);
+
+    _tokenA_OceanId = uint256(keccak256(abi.encodePacked(address(_tokenA), uint(0))));
+
     // funding the arb whale with eth
     vm.deal(tokenOwner, 500 ether);
 
@@ -40,10 +50,10 @@ contract ForkEvolvingProteus is Test {
       500 ether
     );
 
-    int128 price_y_init = ABDKMath64x64.divu(15900000000000000, 1e18);
-    int128 price_x_init = ABDKMath64x64.divu(159000000000000, 1e18);
-    int128 price_y_final = ABDKMath64x64.divu(15900000000000000, 1e18);
-    int128 price_x_final = ABDKMath64x64.divu(15900000000, 1e18);
+    int128 price_y_init = ABDKMath64x64.divu(6951000000000000, 1e18);
+    int128 price_x_init = ABDKMath64x64.divu(69510000000000, 1e18);
+    int128 price_y_final = ABDKMath64x64.divu(6951000000000000, 1e18);
+    int128 price_x_final = ABDKMath64x64.divu(6951000000, 1e18);
 
     vm.prank(tokenOwner);
     _evolvingProteus = new EvolvingInstrumentedProteus(
@@ -104,6 +114,45 @@ contract ForkEvolvingProteus is Test {
     _ocean.doMultipleInteractions{ value: 250 ether }(interactions, ids);
   }
 
+  function _logPoolParams() internal {
+    (int128 a_init, int128 b_init, int128 a_final, int128 b_final, uint t_init, uint t_final) = _evolvingProteus.config();
+    int128 t = (block.timestamp - t_init).divu(t_final - t_init);
+
+    (uint256 xBalanceAfterDeposit, uint256 yBalanceAfterDeposit) = _getBalances();
+    int256 utility = _evolvingProteus.getUtility(int256(xBalanceAfterDeposit), int256(yBalanceAfterDeposit));
+
+    emit log("utility");
+    emit log_int(utility);
+    emit log("a");
+    emit log_int(_evolvingProteus.a());
+    emit log("b");
+    emit log_int(_evolvingProteus.b());
+    emit log("a init");
+    emit log_int(a_init);
+    emit log("b init");
+    emit log_int(b_init);
+    emit log("a final");
+    emit log_int(a_final);
+    emit log("b final");
+    emit log_int(b_final);
+    emit log("current timestamp");
+    emit log_uint(block.timestamp);
+    emit log("t init");
+    emit log_uint(t_init);
+    emit log("t final");
+    emit log_uint(t_final);
+    emit log("time elasped");
+    emit log_uint(block.timestamp - t_init);
+    emit log("t()");
+    emit log_int(t);
+    emit log("3 days");
+    emit log_uint(3 days);
+    emit log("tf - ti");
+    emit log_uint(t_final - t_init);
+    emit log("time % passed");
+    emit log_uint((block.timestamp - t_init) * 100 / T_DURATION);
+  }
+
   function _fetchInteractionId(
     address token,
     uint256 interactionType
@@ -125,10 +174,15 @@ contract ForkEvolvingProteus is Test {
     (xBalance, yBalance) = (result[0], result[1]);
   }
 
+  function _getTotalSupply() internal view returns (uint256 supply) {
+    supply = _pool.getTokenSupply(lpTokenId);
+  }
+
   function _swapWithTokenAInputAmount(uint256 _amount) internal {
     // swap token a to token b
     (uint256 xBalanceBeforeSwap, uint256 yBalanceBeforeSwap) = _getBalances();
     int256 utilityBeforeSwap = _evolvingProteus.getUtility(int256(xBalanceBeforeSwap), int256(yBalanceBeforeSwap));
+    int128 utilityPerLpBeforeSwap = uint256(utilityBeforeSwap).divu(_getTotalSupply());
 
     uint256 _tokenATraderBalanceBeforeSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
     uint256 _tokenBTraderBalanceBeforeSwap = tokenOwner.balance;
@@ -136,10 +190,12 @@ contract ForkEvolvingProteus is Test {
     emit log_uint(xBalanceBeforeSwap);
     emit log_uint(yBalanceBeforeSwap);
     emit log_int(utilityBeforeSwap);
+    emit log("utility per lp before swap");
+    emit log_int(utilityPerLpBeforeSwap);
     emit log("a & b values before swap from token 1 to token 2");
     emit log_int(_evolvingProteus.a());
     emit log_int(_evolvingProteus.b());
-
+    {
     Interaction[] memory interactions = new Interaction[](3);
     // wrap
     interactions[0] = Interaction({
@@ -177,18 +233,22 @@ contract ForkEvolvingProteus is Test {
 
     vm.prank(tokenOwner);
     _ocean.doMultipleInteractions(interactions, ids);
-
+    }
+    
     (uint256 xBalanceAfterSwap, uint256 yBalanceAfterSwap) = _getBalances();
     int256 utilityAfterSwap = _evolvingProteus.getUtility(int256(xBalanceAfterSwap), int256(yBalanceAfterSwap));
+    int128 utilityPerLpAfterSwap = uint256(utilityAfterSwap).divu(_getTotalSupply());
 
     emit log("x, y balances & utility after swap from token 1 to token 2");
     emit log_uint(xBalanceAfterSwap);
     emit log_uint(yBalanceAfterSwap);
     emit log_int(utilityAfterSwap);
+    emit log("utility per lp after swap");
+    emit log_int(utilityPerLpAfterSwap);
     emit log("a & b values after swap from token 1 to token 2");
     emit log_int(_evolvingProteus.a());
     emit log_int(_evolvingProteus.b());
-
+    
     uint256 xBalDiff = xBalanceAfterSwap - xBalanceBeforeSwap;
     uint256 yBalDiff = yBalanceBeforeSwap - yBalanceAfterSwap;
 
@@ -199,6 +259,7 @@ contract ForkEvolvingProteus is Test {
     uint256 _tokenABalDiff = _tokenATraderBalanceBeforeSwap - _tokenATraderBalanceAfterSwap;
 
     assertWithinRounding(utilityAfterSwap, utilityBeforeSwap);
+    assertWithinRounding(utilityPerLpAfterSwap, utilityPerLpBeforeSwap);
     assertWithinRounding(int256(_tokenBBalDiff), int256(yBalDiff));
     assertWithinRounding(int256(_tokenABalDiff), int256(xBalDiff));
     assertGt(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
@@ -212,15 +273,18 @@ contract ForkEvolvingProteus is Test {
 
     uint256 _tokenATraderBalanceBeforeSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
     uint256 _tokenBTraderBalanceBeforeSwap = tokenOwner.balance;
+    int128 utilityPerLpBeforeSwap = uint256(utilityBeforeSwap).divu(_getTotalSupply());
 
     emit log("x, y balances & utility after swap from token 2 to token 1");
     emit log_uint(xBalanceBeforeSwap);
     emit log_uint(yBalanceBeforeSwap);
     emit log_int(utilityBeforeSwap);
+    emit log("utility per lp before swap");
+    emit log_int(utilityPerLpBeforeSwap);
     emit log("a & b values before swap from token 2 to token 1");
     emit log_int(_evolvingProteus.a());
     emit log_int(_evolvingProteus.b());
-
+    {
     Interaction[] memory interactions = new Interaction[](2);
     // swap
     interactions[0] = Interaction({
@@ -246,9 +310,11 @@ contract ForkEvolvingProteus is Test {
 
     vm.prank(tokenOwner);
     _ocean.doMultipleInteractions{ value: _amount }(interactions, ids);
+    }
 
     (uint256 xBalanceAfterSwap, uint256 yBalanceAfterSwap) = _getBalances();
     int256 utilityAfterSwap = _evolvingProteus.getUtility(int256(xBalanceAfterSwap), int256(yBalanceAfterSwap));
+    int128 utilityPerLpAfterSwap = uint256(utilityAfterSwap).divu(_getTotalSupply());
 
     uint256 _tokenATraderBalanceAfterSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
     uint256 _tokenBTraderBalanceAfterSwap = tokenOwner.balance;
@@ -263,11 +329,14 @@ contract ForkEvolvingProteus is Test {
     emit log_uint(xBalanceAfterSwap);
     emit log_uint(yBalanceAfterSwap);
     emit log_int(utilityAfterSwap);
+    emit log("utility per lp after swap");
+    emit log_int(utilityPerLpAfterSwap);
     emit log("a & b values after swap from token 2 to token 1");
     emit log_int(_evolvingProteus.a());
     emit log_int(_evolvingProteus.b());
 
     assertWithinRounding(utilityAfterSwap, utilityBeforeSwap);
+    assertWithinRounding(utilityPerLpAfterSwap, utilityPerLpBeforeSwap);
     assertWithinRounding(int256(_tokenBBalDiff), int256(yBalDiff));
     assertWithinRounding(int256(_tokenABalDiff), int256(xBalDiff));
     assertLt(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
@@ -277,11 +346,14 @@ contract ForkEvolvingProteus is Test {
   function _addLiquidity(uint256 _amount) internal {
     (uint256 xBalanceBeforeDeposit, uint256 yBalanceBeforeDeposit) = _getBalances();
     int256 utilityBeforeDeposit = _evolvingProteus.getUtility(int256(xBalanceBeforeDeposit), int256(yBalanceBeforeDeposit));
+    int128 utilityPerLpBeforeDeposit = uint256(utilityBeforeDeposit).divu(_getTotalSupply());
 
     emit log("x, y balances & utility before adding liquidity");
     emit log_uint(xBalanceBeforeDeposit);
     emit log_uint(yBalanceBeforeDeposit);
     emit log_int(utilityBeforeDeposit);
+    emit log("utility per lp before deposit");
+    emit log_int(utilityPerLpBeforeDeposit);
     emit log("a & b values before adding liquidity");
     emit log_int(_evolvingProteus.a());
     emit log_int(_evolvingProteus.b());
@@ -326,16 +398,20 @@ contract ForkEvolvingProteus is Test {
 
     (uint256 xBalanceAfterDeposit, uint256 yBalanceAfterDeposit) = _getBalances();
     int256 utilityAfterDeposit = _evolvingProteus.getUtility(int256(xBalanceAfterDeposit), int256(yBalanceAfterDeposit));
+    int128 utilityPerLpAfterDeposit = uint256(utilityAfterDeposit).divu(_getTotalSupply());
 
     emit log("x, y balances & utility after adding liquidity");
     emit log_uint(xBalanceAfterDeposit);
     emit log_uint(yBalanceAfterDeposit);
     emit log_int(utilityAfterDeposit);
+    emit log("utility per lp after deposit");
+    emit log_int(utilityPerLpAfterDeposit);
     emit log("a & b values after adding liquidity");
     emit log_int(_evolvingProteus.a());
     emit log_int(_evolvingProteus.b());
 
     assertGt(utilityAfterDeposit, utilityBeforeDeposit);
+    assertGt(utilityPerLpAfterDeposit, utilityPerLpBeforeDeposit);
   }
 
   function _removeLiquidity(uint256 _amount) internal {
@@ -347,11 +423,14 @@ contract ForkEvolvingProteus is Test {
 
     (uint256 xBalanceBeforeWithdraw, uint256 yBalanceBeforeWithdraw) = _getBalances();
     int256 utilityBeforeWithdraw = _evolvingProteus.getUtility(int256(xBalanceBeforeWithdraw), int256(yBalanceBeforeWithdraw));
+    int128 utilityPerLpBeforeWithdraw = uint256(utilityBeforeWithdraw).divu(_getTotalSupply());
 
     emit log("x, y balances & utility before removing liquidity");
     emit log_uint(xBalanceBeforeWithdraw);
     emit log_uint(yBalanceBeforeWithdraw);
     emit log_int(utilityBeforeWithdraw);
+    emit log("utility per lp before withdraw");
+    emit log_int(utilityPerLpBeforeWithdraw);
     emit log("a & b values before removing liquidity");
     emit log_int(_evolvingProteus.a());
     emit log_int(_evolvingProteus.b());
@@ -402,107 +481,108 @@ contract ForkEvolvingProteus is Test {
 
     (uint256 xBalanceAfterWithdrawal, uint256 yBalanceAfterWithdrawal) = _getBalances();
     int256 utilityAfterWithdraw = _evolvingProteus.getUtility(int256(xBalanceAfterWithdrawal), int256(yBalanceAfterWithdrawal));
+    int128 utilityPerLpAfterWithdraw = uint256(utilityAfterWithdraw).divu(_getTotalSupply());
 
     emit log("x, y balances & utility after removing liquidity");
     emit log_uint(xBalanceAfterWithdrawal);
     emit log_uint(yBalanceAfterWithdrawal);
     emit log_int(utilityAfterWithdraw);
+    emit log("utility per lp after withdraw");
+    emit log_int(utilityPerLpAfterWithdraw);
     emit log("a & b values after removing liquidity");
     emit log_int(_evolvingProteus.a());
     emit log_int(_evolvingProteus.b());
 
     assertGt(utilityBeforeWithdraw, utilityAfterWithdraw);
+    assertLt(utilityPerLpBeforeWithdraw, utilityPerLpAfterWithdraw);
   }
 
   function testMultipleSwaps(uint256 _amount) public {
     _amount = bound(_amount, 1 ether, 25 ether);
     if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 15)) {
       _swapWithTokenBInputAmount(_amount);
+      _logPoolParams();
       _swapWithTokenAInputAmount(_amount * 15);
+      _logPoolParams();
     }
   }
 
   function testMultipleSwapsOverDuration(uint256 _amount, uint256 _time) public {
     _amount = bound(_amount, 1 ether, 25 ether);
-    _time = bound(_time, T_DURATION / 8, T_DURATION / 5);
+    _time = bound(_time, T_DURATION / 8, T_DURATION);
 
     if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 15)) {
-    emit log("time logs during swaps");
     _swapWithTokenBInputAmount(_amount);
-    vm.warp(block.timestamp + _time);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - _evolvingProteus.tInit()) * 100 / T_DURATION);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
     _swapWithTokenAInputAmount(_amount * 15);
-    vm.warp(block.timestamp + _time);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - _evolvingProteus.tInit()) * 100 / T_DURATION);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
     _swapWithTokenBInputAmount(_amount);
-    vm.warp(block.timestamp + _time);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - _evolvingProteus.tInit()) * 100 / T_DURATION);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
     _swapWithTokenAInputAmount(_amount * 15);
+    _logPoolParams();
     }
   }
 
   function testDeposit(uint256 _amount) public {
     _amount = bound(_amount, 1 ether, 25 ether);
-
     if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 15)) {
     _swapWithTokenBInputAmount(_amount);
+    _logPoolParams();
     _addLiquidity(_amount);
+    _logPoolParams();
     }
   }
 
   function testDepositOverDuration(uint256 _amount, uint256 _time) public {
     _amount = bound(_amount, 1 ether, 25 ether);
-    _time = bound(_time, T_DURATION / 8, T_DURATION / 5);
-
+    _time = bound(_time, T_DURATION / 8, T_DURATION);
     if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 15)) {
-    emit log("time logs during swaps");
     _swapWithTokenBInputAmount(_amount);
-    vm.warp(block.timestamp + _time);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - _evolvingProteus.tInit()) * 100 / T_DURATION);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
     _swapWithTokenAInputAmount(_amount * 15);
-    vm.warp(block.timestamp + _time);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - _evolvingProteus.tInit()) * 100 / T_DURATION);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
     _addLiquidity(_amount);
+    _logPoolParams();
     }
   }
 
   function testWithdraw(uint256 _amount) public {
     _amount = bound(_amount, 1 ether, 25 ether);
-
     if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 15)) {
     _swapWithTokenAInputAmount(_amount);
+    _logPoolParams();
     _removeLiquidity(_amount);
+    _logPoolParams();
     }
   }
 
   function testWithdrawOverDuration(uint256 _amount, uint256 _time) public {
-    _amount = bound(_amount, 1 ether, 25 ether);
-    _time = bound(_time, T_DURATION / 8, T_DURATION / 5);
+    _amount = bound(_amount, 1 ether, 15 ether);
+    _time = bound(_time, T_DURATION / 8, T_DURATION);
 
     if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 15)) {
-    emit log("time logs during swaps");
     _swapWithTokenBInputAmount(_amount);
-    vm.warp(block.timestamp + _time);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - _evolvingProteus.tInit()) * 100 / T_DURATION);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
     _swapWithTokenAInputAmount(_amount * 15);
-    vm.warp(block.timestamp + _time);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - _evolvingProteus.tInit()) * 100 / T_DURATION);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
     _removeLiquidity(_amount);
-     vm.warp(block.timestamp + _time);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - _evolvingProteus.tInit()) * 100 / T_DURATION);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
     _swapWithTokenAInputAmount(_amount * 15);
-    vm.warp(block.timestamp + _time);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - _evolvingProteus.tInit()) * 100 / T_DURATION);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
     _removeLiquidity(_amount);
+    _logPoolParams();
+    vm.warp(block.timestamp + _time + 10);
+    _swapWithTokenBInputAmount(_amount);
+    _logPoolParams();
     }
   }
 

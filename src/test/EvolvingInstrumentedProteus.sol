@@ -63,7 +63,6 @@ contract EvolvingInstrumentedProteus is EvolvingProteus {
         maxInput = uint256(_max) * 10;
  
     }
-
     function tInit() view public returns (uint256) {
         return config.t_init;
     }
@@ -137,5 +136,4 @@ contract EvolvingInstrumentedProteus is EvolvingProteus {
     ) public view returns (int256 xf, int256 yf) {
         return _getPointGivenYandUtility(y, utility);
     }
-
 }
