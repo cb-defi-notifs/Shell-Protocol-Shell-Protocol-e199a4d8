@@ -22,7 +22,7 @@ struct Config {
      x_init: the initial price at the x axis
      y_final: the final price at the y axis
      x_final: the final price at the x axis
-     time: the total duration of the curve's evolution (e.g. the amount of time it should take to evolve from the initial to the final prices)
+     time: the total duration of the curve's evolution (e.g. the amount of time it should take to evolve from the initial to the final price points)
      
      Using these 5 inputs we can calculate the curve's parameters at every point in time. 
      
@@ -117,7 +117,7 @@ library LibConfig {
     }
 
     /**
-       @notice Calculates the b variable in the curve eq which is basically a sq. root of the inverse of x instantaneous price
+       @notice Calculates the b variable in the curve eq which is basically a sq. root of the x instantaneous price
        @param self config instance
     */
     function b(Config storage self) public view returns (int128) {
