@@ -12,6 +12,11 @@ import {EvolvingInstrumentedProteus} from "./EvolvingInstrumentedProteus.sol";
 import {EvolvingProteus, Config, LibConfig} from "../proteus/EvolvingProteus.sol";
 import {SpecifiedToken} from "../proteus/ILiquidityPoolImplementation.sol";
 
+
+/**
+   Unit Test Suite for evolving proteus this test includes testing and asserting all the computational variables in the contract
+   Note - In this test suitw the internal methods directly without the ocean(accounting layer) hence there is try/catch used in these tests as the internal methods don't have input validation and we by-pass the public methods from where thse internal methods are called from
+*/
 contract EvolvingProteusProperties is Test {
     using ABDKMath64x64 for int128;
     using ABDKMath64x64 for uint256;
@@ -28,35 +33,108 @@ contract EvolvingProteusProperties is Test {
     uint256 constant T_GRANULARITY = 10 seconds;
     uint256 constant T_DURATION = 12 hours;
     
-    int128 price_y_init;
-    int128 price_x_init;
-    int128 price_y_final;
-    int128 price_x_final;
+    int128 py_init;
+    int128 px_init;
+    int128 py_final;
+    int128 px_final;
     uint256 duration;
+
+    uint256 py_init_val;
+    uint256 px_init_val;
+    uint256 py_final_val;
+    uint256 px_final_val;
 
     // @dev DUT: Design Under Test
     EvolvingInstrumentedProteus DUT;
 
     function setUp() public {
+       // x constant y increases
+       // py_init_val = 6951000000000000;
+       // px_init_val = 69510000000000;
+       // py_final_val = 695100000000000000;
+       // px_final_val = 69510000000000;
 
-        price_y_init = ABDKMath64x64.divu(1900000000000000000,1e18);
-        price_x_init = ABDKMath64x64.divu(1600000000000000000,1e18);
-        price_y_final = ABDKMath64x64.divu(2750000000000000000,1e18);
-        price_x_final = ABDKMath64x64.divu(1000000000000000000,1e18);
+       // x constant y decreases
+       // py_init_val = 6951000000000000;
+       // px_init_val = 69510000000000;
+       // py_final_val = 695100000000000;
+       // px_final_val = 69510000000000;
 
-        duration = T_DURATION;
+       // y constant x decreases
+       // py_init_val = 6951000000000000;
+       // px_init_val = 69510000000000;
+       // py_final_val = 6951000000000000;
+       // px_final_val = 6951000000;
+    
+       // y constant x increases
+       // py_init_val = 6951000000000000;
+       // px_init_val = 6951000000;
+       // py_final_val = 6951000000000000;
+       // px_final_val = 69510000000000;
 
-        DUT = new EvolvingInstrumentedProteus(price_y_init, price_x_init, price_x_final, price_y_final, duration);
+       // x & y both decrease
+       // py_init_val = 6951000000000000;
+       // px_init_val = 69510000000000;
+       // py_final_val = 695100000000000;
+       // px_final_val = 6951000000000;
+
+       // x & y both increase
+       py_init_val = 6951000000000000;
+       px_init_val = 69510000000000;
+       py_final_val = 695100000000000000;
+       px_final_val = 695100000000000;
+
+
+       py_init = ABDKMath64x64.divu(py_init_val, 1e18);
+       px_init = ABDKMath64x64.divu(px_init_val, 1e18);
+       py_final = ABDKMath64x64.divu(py_final_val, 1e18);
+       px_final = ABDKMath64x64.divu(px_final_val, 1e18);
+
+       duration = T_DURATION;
+
+       DUT = new EvolvingInstrumentedProteus(py_init, px_init, py_final, px_final, duration);
     }
 
     function testConfig() public {
-       (int128 a_init, int128 b_init, int128 a_final, int128 b_final) = DUT.printConfig();
-       emit log_named_int("a_init", a_init);
-       emit log_named_int("b_init", b_init);
-       emit log_named_int("a_final", a_final);
-       emit log_named_int("b_final", b_final);
-       emit log_named_int("a_convert", a_init.muli(1e18));
-       emit log_named_int("b_convert", b_init.muli(1e18));
+       (int128 py_init, int128 px_init, int128 py_final, int128 px_final) = DUT.printConfig();
+       emit log_named_int("py_init", py_init);
+       emit log_named_int("px_init", px_init);
+       emit log_named_int("py_final", py_final);
+       emit log_named_int("px_final", px_final);
+    }
+
+    function test_deployment_reverts_with_incorrect_params(
+      uint128 py_init,
+      uint128 px_init,
+      uint128 py_final,
+      uint128 px_final) 
+      public {
+        
+        // since we use abdk math for transforming the params that we set to handle precsision and hence we limit this test to inputs <= 1e18
+        vm.assume(py_init > 0 && py_init <= 1e18);
+        vm.assume(px_init > 0 && px_init <= 1e18);
+        vm.assume(py_final > 0 && py_final <= 1e18);
+        vm.assume(px_final > 0 && px_final <= 1e18);
+       
+        int128 py_init_transformed = ABDKMath64x64.divu(py_init,1e18);
+        int128 px_init_transformed = ABDKMath64x64.divu(px_init,1e18);
+        int128 py_final_transformed = ABDKMath64x64.divu(py_final,1e18);
+        int128 px_final_transformed = ABDKMath64x64.divu(px_final,1e18);
+        emit log_int(py_init_transformed);
+        emit log_int(px_init_transformed);
+        emit log_int(py_final_transformed);
+        emit log_int(px_final_transformed);
+
+
+        if (px_final_transformed >= py_final_transformed) {
+          vm.expectRevert();
+          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, duration);
+        }
+
+        if (px_init_transformed >= py_init_transformed) {
+          vm.expectRevert();
+          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, duration);
+        }
     }
 
     function testUtilityScaling(int256 x0, int256 y0) public {
@@ -68,6 +146,7 @@ contract EvolvingProteusProperties is Test {
                 assertWithinRounding(u0 / 2, u1);
             } catch {}
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testUtilityScalingOverT(uint256 t_slice, int256 x0, int256 y0) public {
@@ -75,6 +154,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testUtilityScaling(x0, y0);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testGetPointScaling(
@@ -84,8 +164,8 @@ contract EvolvingProteusProperties is Test {
     ) public {
         vm.assume(x0 >= int256(MIN_BALANCE) * 2);
         vm.assume(y0 >= int256(MIN_BALANCE) * 2);
-        vm.assume(y0/x0 <= 10**8);
-        vm.assume(x0/y0 <= 10**8);
+        vm.assume(y0/x0 <= int256(MAX_BALANCE_AMOUNT_RATIO));
+        vm.assume(x0/y0 <= int256(MAX_BALANCE_AMOUNT_RATIO));
         try DUT.getUtility(x0, y0) returns (int256 u0) {
             if (point) {
                 try
@@ -94,7 +174,7 @@ contract EvolvingProteusProperties is Test {
                         u0 / 2
                     )
                 returns (int256, int256 y1) {
-                    assertWithinRounding(y0 / 2, y1);
+                  assertWithinRounding(y0 / 2, y1);
                 } catch {}
             } else {
                 try
@@ -105,8 +185,10 @@ contract EvolvingProteusProperties is Test {
                 returns (int256 x1, int256) {
                     assertWithinRounding(x0 / 2, x1);
                 } catch {}
+                assertGt(DUT.py(), DUT.px());
             }
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testGetPointScalingOverT(uint256 t_slice, int256 x0, int256 y0, bool point) public {
@@ -114,6 +196,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testGetPointScaling(x0, y0, point);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testSwapInput(
@@ -125,6 +208,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(x0 >= MIN_BALANCE);
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(inputAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         try DUT.swapGivenInputAmount(x0, y0, inputAmount, inputToken) returns (
             uint256 o0
@@ -165,6 +250,7 @@ contract EvolvingProteusProperties is Test {
                 }
             } catch {}
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testSwapInputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 inputAmount, bool token) public {
@@ -172,6 +258,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testSwapInput(x0, y0, inputAmount, token);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testSwapOutput(
@@ -183,6 +270,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(x0 >= MIN_BALANCE);
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(outputAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken outputToken = token
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
@@ -211,6 +300,8 @@ contract EvolvingProteusProperties is Test {
                 x1 = x0 + i0;
                 opposite = SpecifiedToken.X;
             }
+            assertGt(DUT.py(), DUT.px());
+
             try DUT.swapGivenOutputAmount(x1, y1, i0, opposite) returns (
                 uint256 i1
             ) {
@@ -231,6 +322,7 @@ contract EvolvingProteusProperties is Test {
                         "back and forth swap should result in extra Y"
                     );
                 }
+                assertGt(DUT.py(), DUT.px());
             } catch (bytes memory error) {
                 if (bytes4(error) == EvolvingProteus.BalanceError.selector) {
                     assertTrue(
@@ -241,6 +333,7 @@ contract EvolvingProteusProperties is Test {
                 }
             }
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testSwapOutputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 outputAmount, bool token) public {
@@ -248,6 +341,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testSwapOutput(x0, y0, outputAmount, token);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testDepositOutputWithdrawInput(
@@ -261,6 +355,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(s0 >= MIN_BALANCE);
         vm.assume(mintedAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken depositedToken = token
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
@@ -283,6 +379,7 @@ contract EvolvingProteusProperties is Test {
                 y1 += depositedAmount;
                 x1 = x0;
             }
+            assertGt(DUT.py(), DUT.px());
             try
                 DUT.withdrawGivenInputAmount(
                     x1,
@@ -297,8 +394,10 @@ contract EvolvingProteusProperties is Test {
                     depositedAmount,
                     "Depositing and withdrawing liquidity should not decrease value of pool"
                 );
+                assertGt(DUT.py(), DUT.px());
             } catch {}
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testDepositOutputWithdrawInputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 mintedAmount, bool token) public {
@@ -306,6 +405,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testDepositOutputWithdrawInput(x0, y0, s0, mintedAmount, token);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testDepositInputWithdrawOutput(
@@ -319,6 +419,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(s0 >= MIN_BALANCE);
         vm.assume(depositedAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken depositedToken = token
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
@@ -341,6 +443,8 @@ contract EvolvingProteusProperties is Test {
                 y1 += depositedAmount;
                 x1 = x0;
             }
+            assertGt(DUT.py(), DUT.px());
+
             try
                 DUT.withdrawGivenOutputAmount(
                     x1,
@@ -355,8 +459,10 @@ contract EvolvingProteusProperties is Test {
                     mintedAmount,
                     "Depositing and withdrawing liquidity should not decrease value of pool"
                 );
+                assertGt(DUT.py(), DUT.px());
             } catch {}
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testDepositInputWithdrawOutputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 depositedAmount, bool token) public {
@@ -364,6 +470,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testDepositOutputWithdrawInput(x0, y0, s0, depositedAmount, token);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testSwapDWInput(
@@ -377,6 +484,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(s0 >= MIN_BALANCE);
         vm.assume(inputAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         
         try DUT.swapGivenInputAmount(x0, y0, inputAmount, inputToken) returns (uint256 o0) {
@@ -400,6 +509,7 @@ contract EvolvingProteusProperties is Test {
                 x1 = x0 - o0;
                 opposite = SpecifiedToken.X;
             }
+            assertGt(DUT.py(), DUT.px());
 
             try DUT.depositGivenInputAmount(x1, y1, s0, o0, opposite) returns (uint256 mintedAmount) {
             
@@ -412,6 +522,7 @@ contract EvolvingProteusProperties is Test {
                     x1 += o0;
                     opposite = SpecifiedToken.Y;
                 }
+                assertGt(DUT.py(), DUT.px());
 
                 try DUT.withdrawGivenInputAmount(x1, y1, s1, mintedAmount, opposite) returns (uint256 o1) {
                     if (inputToken == SpecifiedToken.X) {
@@ -429,11 +540,15 @@ contract EvolvingProteusProperties is Test {
                             "Back and forth swap should result in extra Y"
                         );
                     }
+                    assertGt(DUT.py(), DUT.px());
                 } catch {}
+                assertGt(DUT.py(), DUT.px());
 
                 
             } catch {}
+            assertGt(DUT.py(), DUT.px());
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testSwapDWInputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 inputAmount, bool token) public {
@@ -441,6 +556,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testSwapDWInput(x0, y0, s0, inputAmount, token);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testSwapDWOutput(
@@ -454,6 +570,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(s0 >= MIN_BALANCE);
         vm.assume(outputAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken outputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         
         try DUT.swapGivenOutputAmount(x0, y0, outputAmount, outputToken) returns (uint256 i0) {
@@ -477,6 +595,7 @@ contract EvolvingProteusProperties is Test {
                 x1 = x0 + i0;
                 opposite = SpecifiedToken.X;
             }
+            assertGt(DUT.py(), DUT.px());
 
             try DUT.withdrawGivenOutputAmount(x1, y1, s0, i0, opposite) returns (uint256 burnedAmount) {
             
@@ -489,6 +608,7 @@ contract EvolvingProteusProperties is Test {
                     x1 -= i0;
                     opposite = SpecifiedToken.Y;
                 }
+                assertGt(DUT.py(), DUT.px());
 
                 try DUT.depositGivenOutputAmount(x1, y1, s1, burnedAmount, opposite) returns (uint256 i1) {
                     if (outputToken == SpecifiedToken.X) {
@@ -504,9 +624,11 @@ contract EvolvingProteusProperties is Test {
                             "Back and forth swap should result in extra Y"
                         );
                     }
+                    assertGt(DUT.py(), DUT.px());
                 } catch {}
             } catch {}
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testSwapDWOutputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 outputAmount, bool token) public {
@@ -514,12 +636,15 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testSwapDWOutput(x0, y0, s0, outputAmount, token);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testSmallInput(uint256 x0, uint256 y0, bool token) public {
 
         vm.assume(x0 > MIN_BALANCE && x0 < MAX_BALANCE);
         vm.assume(y0 > MIN_BALANCE && y0 < MAX_BALANCE);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
 
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         SpecifiedToken outputToken = token ? SpecifiedToken.Y : SpecifiedToken.X;
@@ -527,11 +652,12 @@ contract EvolvingProteusProperties is Test {
         uint256 minInput = (token ? x0 : y0) / MAX_BALANCE_AMOUNT_RATIO;
         vm.expectRevert();
         DUT.swapGivenInputAmount(x0, y0, minInput, inputToken);
+        assertGt(DUT.py(), DUT.px());
 
         uint256 minOutput = (token ? y0 : x0) / MAX_BALANCE_AMOUNT_RATIO;
         vm.expectRevert();
         DUT.swapGivenOutputAmount(x0, y0, minOutput, outputToken);
-
+        assertGt(DUT.py(), DUT.px());
     }
     
     function testSmallInputOverT(uint256 t_slice, uint256 x0, uint256 y0, bool token) public {
@@ -539,6 +665,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testSmallInput(x0, y0, token);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testUtilityWithDeltaBalance(
@@ -562,8 +689,10 @@ contract EvolvingProteusProperties is Test {
                 } else {
                     assertLe(ui, uf);
                 }
+                assertGt(DUT.py(), DUT.px());
             } catch {}
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
     
     function testUtilityWithDeltaBalanceOverT(uint256 t_slice, uint256 x, uint256 y, int128 delta, bool direction) public {
@@ -571,6 +700,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testUtilityWithDeltaBalance(x, y, delta, direction);
+        assertGt(DUT.py(), DUT.px());
     }
     
     function testGetPointWithDeltaUtility(
@@ -601,8 +731,10 @@ contract EvolvingProteusProperties is Test {
                         } else {
                             assertGe(p1y, p0y);
                         }
+                        assertGt(DUT.py(), DUT.px());
                     } catch {}
                 } catch {}
+                assertGt(DUT.py(), DUT.px());
             } else {
                 try
                     DUT.getPointGivenYandUtility(yi, ui)
@@ -619,10 +751,13 @@ contract EvolvingProteusProperties is Test {
                         } else {
                             assertGe(p1x, p0x);
                         }
+                        assertGt(DUT.py(), DUT.px());
                     } catch {}
                 } catch {}
+                assertGt(DUT.py(), DUT.px());
             }
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testGetPointWithDeltaUtilityOverT(uint256 t_slice, uint256 x, uint256 y, int128 delta, bool direction) public {
@@ -630,6 +765,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testGetPointWithDeltaUtility(x, y, delta, direction);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testGetPointWithDeltaBalance(
@@ -662,8 +798,10 @@ contract EvolvingProteusProperties is Test {
                         } else {
                             assertLe(p1y, p0y);
                         }
+                        assertGt(DUT.py(), DUT.px());
                     } catch {}
                 } catch {}
+                assertGt(DUT.py(), DUT.px());
             } else {
                 try
                     DUT.getPointGivenYandUtility(yi, ui)
@@ -680,10 +818,13 @@ contract EvolvingProteusProperties is Test {
                         } else {
                             assertLe(p1x, p0x);
                         }
+                        assertGt(DUT.py(), DUT.px());
                     } catch {}
                 } catch {}
+                assertGt(DUT.py(), DUT.px());
             }
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
     
     function testGetPointWithDeltaBalanceOverT(uint256 t_slice, uint256 x, uint256 y, int128 delta, bool direction) public {
@@ -691,6 +832,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testGetPointWithDeltaBalance(x, y, delta, direction);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testRecovery(uint256 x, uint256 y) public {
@@ -709,14 +851,19 @@ contract EvolvingProteusProperties is Test {
                         ui
                     )
                 returns (int256 xf, int256) {
+                    assertGt(DUT.py(), DUT.px());
                     try
                         DUT.getUtility(xf, yf)
                     returns (int256 uf) {
                         assertWithinRounding(ui, uf);
+                        assertGt(DUT.py(), DUT.px());
                     } catch {}
+                    assertGt(DUT.py(), DUT.px());
                 } catch {}
             } catch {}
+            assertGt(DUT.py(), DUT.px());
         } catch {}
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testRecoveryOverT(uint256 t_slice, uint256 x, uint256 y) public {
@@ -724,6 +871,7 @@ contract EvolvingProteusProperties is Test {
         uint256 t = t_slice * T_GRANULARITY;
         vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
         testRecovery(x, y);
+        assertGt(DUT.py(), DUT.px());
     }
 
   function testSqrt(int256 a, int256 b) public {
@@ -763,18 +911,11 @@ contract EvolvingProteusProperties is Test {
 
         vm.assume(x0 > MIN_BALANCE && x0 < 1e27);
         vm.assume(y0 > MIN_BALANCE && y0 < 1e27);
-        
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
+
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         SpecifiedToken outputToken = token ? SpecifiedToken.Y : SpecifiedToken.X;
-
-        // int256 utility = DUT.getUtility(int(x0), int(y0));
-        // emit log_named_int("utility", utility);
-
-        // (int _xf, int ux) = DUT.getPointGivenXandUtility(int(x0), utility);
-        // emit log_named_int("ux", ux);
-
-        // (int _yf, int uy) = DUT.getPointGivenYandUtility(int(y0), utility);
-        // emit log_named_int("uy", uy);
 
         uint256 maxInput = DUT.getSwapMax(int256(x0), int256(y0), token);
 
@@ -783,10 +924,12 @@ contract EvolvingProteusProperties is Test {
         //token ? assertTrue((maxInput/10) > x0, "max X input doesn't match") : assertTrue((maxInput + y0) > y0, "max Y input doesn't match");
         vm.expectRevert();
         DUT.swapGivenInputAmount(x0, y0, maxInput, inputToken);
+        assertGt(DUT.py(), DUT.px());
 
         uint256 maxOutput = (token ? y0 : x0) - MIN_BALANCE + 1;
         vm.expectRevert();
         DUT.swapGivenOutputAmount(x0, y0, maxOutput, outputToken);
+        assertGt(DUT.py(), DUT.px());
     }
 
     function testEdgeSwapsOverT(uint256 t_slice, uint256 x0, uint256 y0, bool token) public {
@@ -805,6 +948,9 @@ contract EvolvingProteusProperties is Test {
     {
         vm.assume(x < MAX_BALANCE && y < MAX_BALANCE);
         vm.assume(x > MIN_BALANCE && y > MIN_BALANCE);
+        vm.assume(y/x <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x/y <= MAX_BALANCE_AMOUNT_RATIO);
+        
         xi = int256(x);
         yi = int256(y);
 
@@ -870,4 +1016,5 @@ contract EvolvingProteusProperties is Test {
         assertLe((a0) - (a0 / BASE_FEE) - FIXED_FEE, a1, "not within less than rounding");
         assertGe((a0) + (a0 / BASE_FEE) + FIXED_FEE, a1, "not within greater than rounding");
     }
+
 }  
