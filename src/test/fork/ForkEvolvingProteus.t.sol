@@ -72,8 +72,8 @@ contract ForkEvolvingProteus is Test {
     );
     
     // Different price ranges that are used for testing
-    // Note - Tests might fail due to a incompatible relation b/w the prices & the swap/deposit/withdrawal amounts this is a known relation
-    // Note- some invariants for the reverse swap tests ight fail because of the fee so instead of user making oney the pool akes oney in some of those cases at the end of the reverse this is a known behaviour
+    // Note - Tests might fail due to a incompatible relation b/w the prices & the swap/deposit/withdrawal amounts this is a known relation i.e if the prices for a pool are high then the liquidity and the swap prices need to be higher too to avoid any bonding curve voilation checks e have in the contract (see the custo errors in the contract)
+    // Note- some invariants for the reverse swap tests ight fail because of the fee so instead of user making money the pool makes money in some of those cases at the end of the reverse this is a known behaviour
     // Note - since we can't exactly predict the behavior when both x & y prices mov e in opposite directions hence we don't test those scenario's and consider that out of scope
 
     // x & y constant
@@ -83,10 +83,10 @@ contract ForkEvolvingProteus is Test {
     // px_final_val = 69510000000000;
     
     // large values
-    // py_final_val =20000000000000000000000;
+    // py_final_val = 20000000000000000000000;
     // px_init_val = 11000000000000000000000;
-    // py_init_val = 20000000000000000000000;
-    // px_final_val =11000000000000000000000;
+    // py_init_val =  20000000000000000000000;
+    // px_final_val = 11000000000000000000000;
 
     // x constant y increases
     // py_init_val = 695100000000000;
@@ -95,10 +95,10 @@ contract ForkEvolvingProteus is Test {
     // px_final_val = 69510000000000;
 
     // large values
-    py_final_val = 22000000000000000000000;
-    px_init_val = 11000000000000000000000;
-    py_init_val = 15000000000000000000000;
-    px_final_val = 11000000000000000000000;
+    // py_final_val = 22000000000000000000000;
+    // px_init_val = 11000000000000000000000;
+    // py_init_val = 15000000000000000000000;
+    // px_final_val = 11000000000000000000000;
 
     // x constant y decreases
     // py_init_val = 6951000000000000;
@@ -125,10 +125,10 @@ contract ForkEvolvingProteus is Test {
     // px_final_val = 11000000000000000000000;
     
     // y constant x increases
-    // py_init_val = 6951000000000000;
-    // px_init_val = 6951000000;
-    // py_final_val = 6951000000000000;
-    // px_final_val = 69510000000000;
+    py_init_val = 6951000000000000;
+    px_init_val = 6951000000;
+    py_final_val = 6951000000000000;
+    px_final_val = 69510000000000;
 
     // large values
     // py_final_val = 15000000000000000000000;
@@ -712,25 +712,25 @@ contract ForkEvolvingProteus is Test {
 
       // assertion for invariants based on the price confgurations
       if (px_final_val < px_init_val && py_final_val < py_init_val) {
-          assertGe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
+          assertGe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertLe(xBalanceAfterSwap, xBalanceBeforeSwap);
       } else if (px_final_val > px_init_val && py_final_val > py_init_val) {
-          assertLe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
+          assertLe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertGe(xBalanceAfterSwap, xBalanceBeforeSwap);
       } else if (px_final_val < px_init_val && py_final_val == py_init_val) {
-          assertGe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
+          assertGe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertLe(xBalanceAfterSwap, xBalanceBeforeSwap);
       }  else if (px_final_val > px_init_val && py_final_val == py_init_val) {
-          assertLe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
+          assertLe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertGe(xBalanceAfterSwap, xBalanceBeforeSwap);
       } else if (px_final_val == px_init_val && py_final_val < py_init_val) {
-          assertGe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
+          assertGe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertLe(xBalanceAfterSwap, xBalanceBeforeSwap);
       } else if (px_final_val == px_init_val && py_final_val > py_init_val) {
-          assertLe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
+          assertLe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertGe(xBalanceAfterSwap, xBalanceBeforeSwap);
       } else {
-          assertLe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
+          assertLe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertGe(xBalanceAfterSwap, xBalanceBeforeSwap);
       }
     }

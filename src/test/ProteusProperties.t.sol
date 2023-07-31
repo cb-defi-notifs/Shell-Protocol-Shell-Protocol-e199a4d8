@@ -20,12 +20,12 @@ contract ProteusProperties is DSTest {
     Vm public constant vm = Vm(HEVM_ADDRESS);
 
     uint256 public constant MAX_BALANCE = uint256(type(int256).max);
-    uint256 public constant MIN_BALANCE = 10**14;
+    uint256 public constant MIN_BALANCE = 10**12;
     uint256 public constant MIN_OPERATING_AMOUNT = 2 * 10**8;
     uint256 private constant MAX_BALANCE_AMOUNT_RATIO = 10**11;
     int256 public constant MAX_CHANGE_FACTOR = 10;
     uint8 public constant PERCENT_DECIMALS = 14;
-    int256 constant BASE_FEE = 800;
+    int256 constant BASE_FEE = 4000;
     int256 constant FIXED_FEE = 10**9;
     int128 MAX_M = 0x5f5e1000000000000000000;
     int128 MIN_M = 0x00000000000002af31dc461;
@@ -39,359 +39,70 @@ contract ProteusProperties is DSTest {
     InstrumentedProteus DUT;
 
     function setUp() public {
-
-        /******************* DAI+USDC ********************/
-        
-        // ms = [
-            
-        //     ABDKMath64x64.divu(25640378140000000, 1e18),
-        //     ABDKMath64x64.divu(52631955610000000, 1e18),
-        //     ABDKMath64x64.divu(176486037900000000, 1e18),
-        //     ABDKMath64x64.divu(333371587500000000, 1e18),
-        //     ABDKMath64x64.divu(538520049000000000, 1e18),
-        //     ABDKMath64x64.divu(818226110700000000, 1e18),
-        //     ABDKMath64x64.divu(1222303769000000000, 1e18),
-        //     ABDKMath64x64.divu(1857512075000000000, 1e18),
-        //     ABDKMath64x64.divu(3000976136000000000, 1e18),
-        //     ABDKMath64x64.divu(5669257622000000000, 1e18),
-        //     ABDKMath64x64.divu(19011780730000000000, 1e18),
-        //     ABDKMath64x64.divu(39026042580000000000, 1e18)
-        // ];
-
-
-        // _as = [
-        //     ABDKMath64x64.divu(37864635818100000000, 1e18).neg(),
-        //     ABDKMath64x64.divu(994494574800000000, 1e18),
-        //     ABDKMath64x64.divu(996568165800000000, 1e18),
-        //     ABDKMath64x64.divu(998949728700000000, 1e18),
-        //     ABDKMath64x64.divu(999003351700000000, 1e18),
-        //     ABDKMath64x64.divu(999065034500000000, 1e18),
-        //     ABDKMath64x64.divu(998979292200000000, 1e18),
-        //     ABDKMath64x64.divu(999069324400000000, 1e18),
-        //     ABDKMath64x64.divu(999115634600000000, 1e18),
-        //     ABDKMath64x64.divu(998897196900000000, 1e18),
-        //     ABDKMath64x64.divu(998645883200000000, 1e18),
-        //     ABDKMath64x64.divu(998580698800000000, 1e18),
-        //     int128(0)
-        // ];
-
-        // bs = [
-        //     int128(0),
-        //     ABDKMath64x64.divu(999132540000000000, 1e18),
-        //     ABDKMath64x64.divu(999241988500000000, 1e18),
-        //     ABDKMath64x64.divu(999663642100000000, 1e18),
-        //     ABDKMath64x64.divu(999681583100000000, 1e18),
-        //     ABDKMath64x64.divu(999714939200000000, 1e18),
-        //     ABDKMath64x64.divu(999644436200000000, 1e18),
-        //     ABDKMath64x64.divu(999755147900000000, 1e18),
-        //     ABDKMath64x64.divu(999841839000000000, 1e18),
-        //     ABDKMath64x64.divu(999179148000000000, 1e18),
-        //     ABDKMath64x64.divu(997728241700000000, 1e18),
-        //     ABDKMath64x64.divu(996418148900000000, 1e18),
-        //     ABDKMath64x64.divu(37974234723700000000, 1e18).neg()
-        // ];
-        
-        // ks = [
-        //     ABDKMath64x64.divu(1000000000000000000, 1e18),
-        //     ABDKMath64x64.divu(6254859434000000000000, 1e18),
-        //     ABDKMath64x64.divu(9513601567000000000000, 1e18),
-        //     ABDKMath64x64.divu(28746117460000000000000, 1e18),
-        //     ABDKMath64x64.divu(30310444480000000000000, 1e18),
-        //     ABDKMath64x64.divu(32671558110000000000000, 1e18),
-        //     ABDKMath64x64.divu(28962612650000000000000, 1e18),
-        //     ABDKMath64x64.divu(33907851000000000000000, 1e18),
-        //     ABDKMath64x64.divu(38232547770000000000000, 1e18),
-        //     ABDKMath64x64.divu(20723726300000000000000, 1e18),
-        //     ABDKMath64x64.divu(10996470220000000000000, 1e18),
-        //     ABDKMath64x64.divu(7973373974000000000000, 1e18),
-        //     ABDKMath64x64.divu(997878522800000000, 1e18)
-        // ];
-
-
-        /******************* USDT+USDC ********************/
-
-        // ms = [
-            
-        //     ABDKMath64x64.divu(4988524301616019, 1e18),
-        //     ABDKMath64x64.divu(10093874228036957, 1e18),
-        //     ABDKMath64x64.divu(134911549705007380, 1e18),
-        //     ABDKMath64x64.divu(294951399049041830, 1e18),
-        //     ABDKMath64x64.divu(507533406706403500, 1e18),
-        //     ABDKMath64x64.divu(803608574748970200, 1e18),
-        //     ABDKMath64x64.divu(1244396668893393600, 1e18),
-        //     ABDKMath64x64.divu(1970342709159367000, 1e18),
-        //     ABDKMath64x64.divu(3390405890233086700, 1e18),
-        //     ABDKMath64x64.divu(7411826856714478500, 1e18),
-        //     ABDKMath64x64.divu(99016272187302080000, 1e18),
-        //     ABDKMath64x64.divu(199057878819721300000, 1e18)
-        // ];
-
-
-        // _as = [
-        //     ABDKMath64x64.divu(172448824556986536566, 1e18).neg(),
-        //     ABDKMath64x64.divu(24480104736984021945, 1e18).neg(),
-        //     ABDKMath64x64.divu(968499015539816999, 1e18),
-        //     ABDKMath64x64.divu(997044457633360953, 1e18),
-        //     ABDKMath64x64.divu(999176564587494283, 1e18),
-        //     ABDKMath64x64.divu(999760662223661838, 1e18),
-        //     ABDKMath64x64.divu(999775291339055225, 1e18),
-        //     ABDKMath64x64.divu(999832917765412267, 1e18),
-        //     ABDKMath64x64.divu(999754971067666352, 1e18),
-        //     ABDKMath64x64.divu(999715784844085922, 1e18),
-        //     ABDKMath64x64.divu(999337728227522208, 1e18),
-        //     ABDKMath64x64.divu(952423716600508866, 1e18),
-        //     int128(0)
-        // ];
-
-        // bs = [
-        //     int128(0),
-        //     ABDKMath64x64.divu(738145554701094390, 1e18),
-        //     ABDKMath64x64.divu(995020560258219360, 1e18),
-        //     ABDKMath64x64.divu(998871670088073925, 1e18),
-        //     ABDKMath64x64.divu(999500538017117742, 1e18),
-        //     ABDKMath64x64.divu(999796987080251019, 1e18),
-        //     ABDKMath64x64.divu(999808743162822137, 1e18),
-        //     ABDKMath64x64.divu(999880453295821071, 1e18),
-        //     ABDKMath64x64.divu(999726871588214358, 1e18),
-        //     ABDKMath64x64.divu(999594014384971278, 1e18),
-        //     ABDKMath64x64.divu(996791924200965733, 1e18),
-        //     ABDKMath64x64.divu(3648458620457641623, 1e18).neg(),
-        //     ABDKMath64x64.divu(193235903384550331927, 1e18).neg()
-        // ];
-        
-        // ks = [
-        //     ABDKMath64x64.divu(1000000000000000000, 1e18),
-        //     ABDKMath64x64.divu(6772180370810545500, 1e18),
-        //     ABDKMath64x64.divu(4775908278027514000000, 1e18),
-        //     ABDKMath64x64.divu(42658409603755594000000, 1e18),
-        //     ABDKMath64x64.divu(131686706216427260000000, 1e18),
-        //     ABDKMath64x64.divu(393821543135155100000000, 1e18),
-        //     ABDKMath64x64.divu(418802120970220900000000, 1e18),
-        //     ABDKMath64x64.divu(607778616655656100000000, 1e18),
-        //     ABDKMath64x64.divu(336207321870940000000000, 1e18),
-        //     ABDKMath64x64.divu(252404303563278840000000, 1e18),
-        //     ABDKMath64x64.divu(45013559921375940000000, 1e18),
-        //     ABDKMath64x64.divu(37102710152459470000, 1e18),
-        //     ABDKMath64x64.divu(892546756744152300, 1e18)
-        // ];
-
-        /******************* Stablepool ********************/
-
-        // ms = [
-            
-        //     ABDKMath64x64.divu(74949352045665360, 1e18),
-        //     ABDKMath64x64.divu(176437510501801440, 1e18),
-        //     ABDKMath64x64.divu(294949543833948736, 1e18),
-        //     ABDKMath64x64.divu(439998564549854848, 1e18),
-        //     ABDKMath64x64.divu(621638204391493376, 1e18),
-        //     ABDKMath64x64.divu(855691263742840832, 1e18),
-        //     ABDKMath64x64.divu(1168717532995685888, 1e18),
-        //     ABDKMath64x64.divu(1608897159648328960, 1e18),
-        //     ABDKMath64x64.divu(2273239856423752960, 1e18),
-        //     ABDKMath64x64.divu(3391345614887979520, 1e18),
-        //     ABDKMath64x64.divu(5669326477431938048, 1e18),
-        //     ABDKMath64x64.divu(12347344823599833088, 1e18)
-
-        // ];
-
-
-        // _as = [
-        //     ABDKMath64x64.divu(12311242107700989952, 1e18).neg(),
-        //     ABDKMath64x64.divu(991703583924802304, 1e18),
-        //     ABDKMath64x64.divu(990645007623340032, 1e18),
-        //     ABDKMath64x64.divu(999011810446014976, 1e18),
-        //     ABDKMath64x64.divu(999373533099786752, 1e18),
-        //     ABDKMath64x64.divu(998552506044198400, 1e18),
-        //     ABDKMath64x64.divu(998740527436358400, 1e18),
-        //     ABDKMath64x64.divu(998672517576702336, 1e18),
-        //     ABDKMath64x64.divu(999027216101513216, 1e18),
-        //     ABDKMath64x64.divu(999094873595834880, 1e18),
-        //     ABDKMath64x64.divu(997589093796428672, 1e18),
-        //     ABDKMath64x64.divu(986500393149405440, 1e18),
-        //     int128(0)
-        // ];
-
-        // bs = [
-        //     int128(0),
-        //     ABDKMath64x64.divu(997047159886028800, 1e18),
-        //     ABDKMath64x64.divu(996860387318722560, 1e18),
-        //     ABDKMath64x64.divu(999328171994619136, 1e18),
-        //     ABDKMath64x64.divu(999487329443043840, 1e18),
-        //     ABDKMath64x64.divu(998976947658451072, 1e18),
-        //     ABDKMath64x64.divu(999137835921119104, 1e18),
-        //     ABDKMath64x64.divu(999058351605722368, 1e18),
-        //     ABDKMath64x64.divu(999629025054822144, 1e18),
-        //     ABDKMath64x64.divu(999782826767500288, 1e18),
-        //     ABDKMath64x64.divu(994676207047796736, 1e18),
-        //     ABDKMath64x64.divu(931810742869311360, 1e18),
-        //     ABDKMath64x64.divu(11248849779963199488, 1e18).neg()
-        // ];
-
-        // ks = [
-        //     ABDKMath64x64.divu(1000000000000000000, 1e18),
-        //     ABDKMath64x64.divu(1271662369279242141696, 1e18),
-        //     ABDKMath64x64.divu(1144930865908982874112, 1e18),
-        //     ABDKMath64x64.divu(8617266801448793931776, 1e18),
-        //     ABDKMath64x64.divu(12557490188868279861248, 1e18),
-        //     ABDKMath64x64.divu(5790114737139856965632, 1e18),
-        //     ABDKMath64x64.divu(6742310813525612691456, 1e18),
-        //     ABDKMath64x64.divu(6304073883970291367936, 1e18),
-        //     ABDKMath64x64.divu(10644662117674986242048, 1e18),
-        //     ABDKMath64x64.divu(12744542018026726227968, 1e18),
-        //     ABDKMath64x64.divu(1849818970740864843776, 1e18),
-        //     ABDKMath64x64.divu(175181981087820382208, 1e18),
-        //     ABDKMath64x64.divu(1080845340128046464, 1e18)
-        // ];
-
-        /******************* ETH+USD ********************/
-
-        // ms = [
-        //     ABDKMath64x64.divu(10856790550209370, 1e18),
-        //     ABDKMath64x64.divu(1300000000000000000000, 1e18),
-        //     ABDKMath64x64.divu(3585238775463989400000, 1e18)
-        // ];
-
-
-        // _as = [
-        //     ABDKMath64x64.divu(920982520082986500000, 1e18).neg(),
-        //     ABDKMath64x64.divu(7691536789499165, 1e18),
-        //     ABDKMath64x64.divu(28070420007789223, 1e18).neg(),
-        //     int128(0)
-        // ];
-
-
-        // bs = [
-        //     int128(0),
-        //     ABDKMath64x64.divu(9998997826348912000, 1e18),
-        //     ABDKMath64x64.divu(36491546010125994000, 1e18).neg(),
-        //     ABDKMath64x64.divu(64147612245360110000, 1e18)
-        // ];
-
-        
-        // ks = [
-        //     ABDKMath64x64.divu(1e18, 1e18),
-        //     ABDKMath64x64.divu(9978310634232354000000, 1e18),
-        //     ABDKMath64x64.divu(3583880648325812700000, 1e18),
-        //     ABDKMath64x64.divu(13643984153955163000000, 1e18)
-        // ];
-
-        // /******************* WBTC+USD ********************/
-
-        // ms = [
-        //     ABDKMath64x64.divu(12769867615614864, 1e18),
-        //     ABDKMath64x64.divu(17000000000000000000000, 1e18),
-        //     ABDKMath64x64.divu(58289495391326970000000, 1e18)
-        // ];
-
-
-        // _as = [
-        //     ABDKMath64x64.divu(3502078122751312000000, 1e18).neg(),
-        //     ABDKMath64x64.divu(2630653388245341, 1e18),
-        //     ABDKMath64x64.divu(7674453718253744, 1e18).neg(),
-        //     int128(0)
-        // ];
-
-
-        // bs = [
-        //     int128(0),
-        //     ABDKMath64x64.divu(44721107600170780000, 1e18),
-        //     ABDKMath64x64.divu(130465713210313680000, 1e18).neg(),
-        //     ABDKMath64x64.divu(316874321430790130000, 1e18)
-        // ];
-
-        
-        // ks = [
-        //     ABDKMath64x64.divu(1e18, 1e18),
-        //     ABDKMath64x64.divu(177501054219700500000000, 1e18),
-        //     ABDKMath64x64.divu(58291263792546626000000, 1e18),
-        //     ABDKMath64x64.divu(258353878460736600000000, 1e18)
-        // ];
-
-        /******************* ShARB + ETH ********************/
-
-        // ms = [
-        //     ABDKMath64x64.divu(12769867615614864, 1e18),
-        //     ABDKMath64x64.divu(17000000000000000000000, 1e18),
-        //     ABDKMath64x64.divu(58289495391326970000000, 1e18)
-        // ];
-
-
-        // _as = [
-        //     ABDKMath64x64.divu(3502078122751312000000, 1e18).neg(),
-        //     ABDKMath64x64.divu(2630653388245341, 1e18),
-        //     ABDKMath64x64.divu(7674453718253744, 1e18).neg(),
-        //     int128(0)
-        // ];
-
-
-        // bs = [
-        //     int128(0),
-        //     ABDKMath64x64.divu(44721107600170780000, 1e18),
-        //     ABDKMath64x64.divu(130465713210313680000, 1e18).neg(),
-        //     ABDKMath64x64.divu(316874321430790130000, 1e18)
-        // ];
-
-        
-        // ks = [
-        //     ABDKMath64x64.divu(1e18, 1e18),
-        //     ABDKMath64x64.divu(177501054219700500000000, 1e18),
-        //     ABDKMath64x64.divu(58291263792546626000000, 1e18),
-        //     ABDKMath64x64.divu(258353878460736600000000, 1e18)
-        // ];
-
-        /******************* wstETH+ETH ********************/
-
         ms = [
-            ABDKMath64x64.divu(55213822240000000, 1e18),
-            ABDKMath64x64.divu(260781822100000000, 1e18),
-            ABDKMath64x64.divu(2699536997000000000, 1e18)
+            
+            ABDKMath64x64.divu(25640378140000000, 1e18),
+            ABDKMath64x64.divu(52631955610000000, 1e18),
+            ABDKMath64x64.divu(176486037900000000, 1e18),
+            ABDKMath64x64.divu(333371587500000000, 1e18),
+            ABDKMath64x64.divu(538520049000000000, 1e18),
+            ABDKMath64x64.divu(818226110700000000, 1e18),
+            ABDKMath64x64.divu(1222303769000000000, 1e18),
+            ABDKMath64x64.divu(1857512075000000000, 1e18),
+            ABDKMath64x64.divu(3000976136000000000, 1e18),
+            ABDKMath64x64.divu(5669257622000000000, 1e18),
+            ABDKMath64x64.divu(19011780730000000000, 1e18),
+            ABDKMath64x64.divu(39026042580000000000, 1e18)
         ];
 
-        _as = [    
-            ABDKMath64x64.divu(17624579963309124000, 1e18).neg(),    
-            ABDKMath6xq4x64.divu(812763667353136100000, 1e18),    
-            ABDKMath64x64.divu(912854003286493600000, 1e18),    
-            ABDKMath64x64.divu(893376069068500300000, 1e18)  
+
+        _as = [
+            ABDKMath64x64.divu(37864635818100000000, 1e18).neg(),
+            ABDKMath64x64.divu(994494574800000000, 1e18),
+            ABDKMath64x64.divu(996568165800000000, 1e18),
+            ABDKMath64x64.divu(998949728700000000, 1e18),
+            ABDKMath64x64.divu(999003351700000000, 1e18),
+            ABDKMath64x64.divu(999065034500000000, 1e18),
+            ABDKMath64x64.divu(998979292200000000, 1e18),
+            ABDKMath64x64.divu(999069324400000000, 1e18),
+            ABDKMath64x64.divu(999115634600000000, 1e18),
+            ABDKMath64x64.divu(998897196900000000, 1e18),
+            ABDKMath64x64.divu(998645883200000000, 1e18),
+            ABDKMath64x64.divu(998580698800000000, 1e18),
+            int128(0)
         ];
 
-        bs = [    
-            ABDKMath64x64.divu(1017996213801182200, 1e18),    
-            ABDKMath64x64.divu(1044097953980484200, 1e18),    
-            ABDKMath64x64.divu(991516549933879400, 1e18),    
-            ABDKMath64x64.divu(8893519090949970000, 1e18).neg()
+        bs = [
+            int128(0),
+            ABDKMath64x64.divu(999132540000000000, 1e18),
+            ABDKMath64x64.divu(999241988500000000, 1e18),
+            ABDKMath64x64.divu(999663642100000000, 1e18),
+            ABDKMath64x64.divu(999681583100000000, 1e18),
+            ABDKMath64x64.divu(999714939200000000, 1e18),
+            ABDKMath64x64.divu(999644436200000000, 1e18),
+            ABDKMath64x64.divu(999755147900000000, 1e18),
+            ABDKMath64x64.divu(999841839000000000, 1e18),
+            ABDKMath64x64.divu(999179148000000000, 1e18),
+            ABDKMath64x64.divu(997728241700000000, 1e18),
+            ABDKMath64x64.divu(996418148900000000, 1e18),
+            ABDKMath64x64.divu(37974234723700000000, 1e18).neg()
         ];
-
-        ks = [    
-            ABDKMath64x64.divu(115480766077527920000, 1e18),    
-            ABDKMath64x64.divu(433861965648468700000, 1e18),    
-            ABDKMath64x64.divu(175498163713831050000, 1e18),    
-            ABDKMath64x64.divu(2017603375340969000, 1e18)
+        
+        ks = [
+            ABDKMath64x64.divu(1000000000000000000, 1e18),
+            ABDKMath64x64.divu(6254859434000000000000, 1e18),
+            ABDKMath64x64.divu(9513601567000000000000, 1e18),
+            ABDKMath64x64.divu(28746117460000000000000, 1e18),
+            ABDKMath64x64.divu(30310444480000000000000, 1e18),
+            ABDKMath64x64.divu(32671558110000000000000, 1e18),
+            ABDKMath64x64.divu(28962612650000000000000, 1e18),
+            ABDKMath64x64.divu(33907851000000000000000, 1e18),
+            ABDKMath64x64.divu(38232547770000000000000, 1e18),
+            ABDKMath64x64.divu(20723726300000000000000, 1e18),
+            ABDKMath64x64.divu(10996470220000000000000, 1e18),
+            ABDKMath64x64.divu(7973373974000000000000, 1e18),
+            ABDKMath64x64.divu(997878522800000000, 1e18)
         ];
-
-        // Constant product
-
-        // ms = [
-        //     ABDKMath64x64.divu(5e17, 1e18),
-        //     ABDKMath64x64.divu(2e18, 1e18)
-        // ];
-
-        // _as = [
-        //     int128(0),
-        //     int128(0),
-        //     int128(0)
-        // ];
-
-        // bs = [
-        //     int128(0),
-        //     int128(0),
-        //     int128(0)
-        // ];
-
-        // ks = [
-        //     ABDKMath64x64.divu(1e18, 1e18),
-        //     ABDKMath64x64.divu(1e18, 1e18),
-        //     ABDKMath64x64.divu(1e18, 1e18)
-        // ];
 
         DUT = new InstrumentedProteus(ms, _as, bs, ks);
     }
