@@ -22,7 +22,7 @@ struct Config {
      x_init: the initial price at the x axis
      y_final: the final price at the y axis
      x_final: the final price at the x axis
-     time: the total duration of the curve's evolution (e.g. the amount of time it should take to evolve from the initial to the final price points)
+     time: the total duration of the curve's evolution (e.g. the amount of time it should take to evolve from the initial to the final prices)
      
      Using these 5 inputs we can calculate the curve's parameters at every point in time. 
      
@@ -91,19 +91,19 @@ library LibConfig {
     }
 
     /**
-       @notice Calculates the x price at a particular time used in for the curve equation described above
+       @notice The minimum price (at the x asymptote) at the current block
        @param self config instance
     */
-    function px(Config storage self) public view returns (int128) {
+    function p_min(Config storage self) public view returns (int128) {
         if (t(self) > ABDK_ONE) return self.px_final;
         else return self.px_init.mul(ABDK_ONE.sub(t(self))).add(self.px_final.mul(t(self)));
     }
 
     /**
-       @notice Calculates the y price at a particular time used in for the curve equation described above
+       @notice The maximum price (at the y asymptote) at the current block
        @param self config instance
     */
-    function py(Config storage self) public view returns (int128) {
+    function p_max(Config storage self) public view returns (int128) {
         if (t(self) > ABDK_ONE) return self.py_final;
         else return self.py_init.mul(ABDK_ONE.sub(t(self))).add(self.py_final.mul(t(self)));
     }
@@ -113,15 +113,15 @@ library LibConfig {
        @param self config instance
     */
     function a(Config storage self) public view returns (int128) {
-        return (py(self).inv()).sqrt();
+        return (p_max(self).inv()).sqrt();
     }
 
     /**
-       @notice Calculates the b variable in the curve eq which is basically a sq. root of the x instantaneous price
+       @notice Calculates the b variable in the curve eq which is basically a sq. root of the inverse of x instantaneous price
        @param self config instance
     */
     function b(Config storage self) public view returns (int128) {
-        return px(self).sqrt();
+        return p_min(self).sqrt();
     }
 
 
@@ -161,6 +161,19 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
      This limits the pool to having at most 10**8 x for each y.
     */ 
     int128 constant MIN_M = 0x00000000000002af31dc461;
+
+    /** 
+     @notice 
+     The maximum price value calculated with abdk library equivalent to 10^26(wei)
+    */ 
+    int256 constant MAX_PRICE_VALUE = 1844674407370955161600000000;
+
+    /** 
+     @notice 
+     The minimum price value calculated with abdk library equivalent to 10^12(wei)
+    */ 
+    int256 constant MIN_PRICE_VALUE = 184467440737;
+
     /** 
      @notice 
      This limits the pool to inputting or outputting
@@ -183,6 +196,11 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     int256 constant MULTIPLIER = 1e18;
     /** 
       @notice 
+      max price ratio
+    */ 
+    int256 constant MAX_PRICE_RATIO = 10**4; // to be comparable with the prices calculated through abdk math
+    /** 
+      @notice 
       flag to indicate increase of the pool's perceived input or output
     */ 
     bool constant FEE_UP = true;
@@ -203,8 +221,11 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     //*********************************************************************//
     error BoundaryError(int256 x, int256 y);
     error AmountError();
-    error CurveError(int256 errorValue);
+    error CurveError(int256 errorValue); 
     error BalanceError(int256 x, int256 y);
+    error InvalidPrice();
+    error MaximumAllowedPriceExceeded();
+    error MaximumAllowedPriceRatioExceeded();
 
 
     //*********************************************************************//
@@ -225,11 +246,18 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         int128 px_final,
         uint256 duration
     ) { 
+        // price value checks
+        if (py_init >= MAX_PRICE_VALUE || py_final >= MAX_PRICE_VALUE) revert MaximumAllowedPriceExceeded();
+        if (px_init <= MIN_PRICE_VALUE || px_final <= MIN_PRICE_VALUE) revert MaximumAllowedPriceExceeded();
+
         // at all times x price should be less than y price
-        if (py_init <= px_init) revert();
-        if (py_final <= px_final) revert();
-        if (py_init <= px_final) revert();
-        if (py_final <= px_init) revert();
+        if (py_init <= px_init) revert InvalidPrice();
+        if (py_final <= px_final) revert InvalidPrice();
+
+        // max. price ratio check
+        if (py_init.div(py_init.sub(px_init)) > ABDKMath64x64.divu(uint(MAX_PRICE_RATIO), 1)) revert MaximumAllowedPriceRatioExceeded();
+        if (py_final.div(py_final.sub(px_final)) > ABDKMath64x64.divu(uint(MAX_PRICE_RATIO), 1)) revert MaximumAllowedPriceRatioExceeded();
+
         config = LibConfig.newConfig(py_init, px_init, py_final, px_final, duration);
       }
 
@@ -255,9 +283,6 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
             (inputToken == SpecifiedToken.X) ? xBalance : yBalance,
             inputAmount
         );
-
-        // x instantaneous price should at all times be less than y
-        if (config.py() <= config.px()) revert();
 
         int256 result = _swap(
             FEE_DOWN,
@@ -297,9 +322,6 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
             outputToken == SpecifiedToken.X ? xBalance : yBalance,
             outputAmount
         );
-
-        // x instantaneous price should at all times be less than y
-        if (config.py() <= config.px()) revert();
 
         int256 result = _swap(
             FEE_UP,
@@ -342,9 +364,6 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
                 totalSupply < INT_MAX
         );
 
-        // x instantaneous price should at all times be less than y
-        if (config.py() <= config.px()) revert();
-
         int256 result = _reserveTokenSpecified(
             depositedToken,
             int256(depositedAmount),
@@ -380,9 +399,6 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
                 yBalance < INT_MAX &&
                 totalSupply < INT_MAX
         );
-
-        // x instantaneous price should at all times be less than y
-        if (config.py() <= config.px()) revert();
 
         int256 result = _lpTokenSpecified(
             depositedToken,
@@ -421,9 +437,6 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
                 totalSupply < INT_MAX
         );
 
-        // x instantaneous price should at all times be less than y
-        if (config.py() <= config.px()) revert();
-
         int256 result = _reserveTokenSpecified(
             withdrawnToken,
             -int256(withdrawnAmount),
@@ -460,9 +473,6 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
                 yBalance < INT_MAX &&
                 totalSupply < INT_MAX
         );
-
-        // x instantaneous price should at all times be less than y
-        if (config.py() <= config.px()) revert();
 
         int256 result = _lpTokenSpecified(
             withdrawnToken,

@@ -76,11 +76,11 @@ contract EvolvingInstrumentedProteus is EvolvingProteus {
     function b() view public returns (int256) {
         return config.b();
     }
-    function px() view public returns (int256) {
-        return config.px();
+    function p_min() view public returns (int256) {
+        return config.p_min();
     }
-    function py() view public returns (int256) {
-        return config.py();
+    function p_max() view public returns (int256) {
+        return config.p_max();
     }
 
     function printConfig() view public returns (int128, int128, int128, int128) {

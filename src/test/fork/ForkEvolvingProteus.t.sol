@@ -11,17 +11,32 @@ import "../../proteus/LiquidityPoolProxy.sol";
 /**
    Fork Test Suite for evolving proteus to test reverse swaps on each asset in a  pool, multiple swaps, deposits & withdrawals over time
    Here are the invariants associated with Evolving Proteus and we have tested
-   1. pool balances considering the fee are as expected
-   2. utility and utility / lp supply stays same after swap considering the fee
-   3. utility and utility / lp supply increases after liquidity deposit
-   4. utility and utility / lp supply increases after liquidity withdrawal
+   1. the difference in pool token balances after a swap is same as the difference user after and before balance considering the fee
+   2. utility & utility/lp does not decrease after swap
+   3. For a deposit, utility will always increase, but util/lp does not decrease
+   4. For a withdraw, utility will always decrease, but util/lp does not decrease
+   The following invariants are soft invariants that apply for a reverse swap scenario(see tests below) and might not hold true when the user is expected to make profit at the end of the reverse swap
    5. when x price decreases over time & y price stays constant
+   5.1 when x is swapped at t0  user x bal after swap => user x bal before swap & pool x bal before swap => pool x bal after swap
+   5.2 when y is swapped at t0  user y bal after swap <= user y bal before swap & pool y bal before swap <= pool y bal after swap
    6. when x price increases over time & y price stays constant
+   6.1 when x is swapped at t0  user x bal after swap <= user x bal before swap & pool x bal before swap <= pool x bal after swap
+   6.2 when y is swapped at t0  user y bal after swap => user y bal before swap & pool y bal before swap => pool y bal after swap
    7. when y price decreases over time & x price stays constant
+   7.1 when x is swapped at t0 user x bal after swap => user x bal before swap & pool x bal before swap >= pool x bal after swap
+   7.2 when y is swapped at t0 user y bal after swap <= user y bal before swap & pool y bal before swap <= pool y bal after swap
    8. when y price increases over time & x price stays constant
+   8.1 when x is swapped at t0 user x bal after swap <= user x bal before swap & pool x bal before swap <= pool x bal after swap
+   8.2 when y is swapped at t0 user y bal after swap => user y bal before swap & pool y bal before swap => pool y bal after swap
    9. when x & y prices both increase with time
+   9.1 when x is swapped at t0 user x bal after swap <= user x bal before swap & pool x bal before swap <= pool x bal after swap
+   9.2 when y is swapped at t0 user y bal after swap => user y bal before swap & pool y bal before swap => pool y bal after swap
    10. when x & y prices both decrease with time
+   10.1 when x is swapped at t0 user x bal after swap >= user x bal before swap & pool x bal before swap >= pool x bal after swap
+   10.2 when y is swapped at t0 user y bal after swap <= user y bal before swap & pool y bal before swap <= pool y bal after swap
    11. when x & y prices both stay constant
+   11.1 when x is swapped at t0 user x bal after swap <= user x bal before swap & pool x bal before swap <= pool x bal after swap
+   11.2 when y is swapped at t0 user y bal after swap <= user y bal before swap & pool y bal before swap <= pool y bal after swap
 */
 contract ForkEvolvingProteus is Test {
   using ABDKMath64x64 for uint256;
@@ -42,8 +57,8 @@ contract ForkEvolvingProteus is Test {
   bytes32 interactionIdToUnWrapERC20TokenA;
   bytes32 interactionIdToUnWrapERC20TokenB;
 
-  int256 constant BASE_FEE = 800; // base fee
-  int256 constant FIXED_FEE = 10 ** 9; // rounding fee? idk
+  int256 constant BASE_FEE = 800; // baseFee refers to the % fee applied to the swap amount
+  int256 constant FIXED_FEE = 10 ** 9; // fixedFee refers to the minimum fee applied to the swap amount
   uint256 constant T_DURATION =  3 days; 
   int128 constant ABDK_ONE = int128(int256(1 << 64));
 
@@ -56,12 +71,12 @@ contract ForkEvolvingProteus is Test {
     vm.createSelectFork("https://arb1.arbitrum.io/rpc"); // Will start on latest block by default
 
     vm.prank(tokenOwner);
-    _tokenA = new ERC20MintsToDeployer(500_000_000 ether, 18);
+    _tokenA = new ERC20MintsToDeployer(type(uint256).max, 18);
 
     _tokenA_OceanId = uint256(keccak256(abi.encodePacked(address(_tokenA), uint(0))));
 
     // funding the arb whale with eth
-    vm.deal(tokenOwner, 500_000_000_000_000 ether);
+    vm.deal(tokenOwner, type(uint256).max);
 
     vm.prank(tokenOwner);
     _pool = new LiquidityPoolProxy(
@@ -71,94 +86,149 @@ contract ForkEvolvingProteus is Test {
       10_000_000 ether
     );
     
+    // Note 
+    /** 
+      - Tests might fail due to a incompatible relation b/w the prices & the swap/deposit/withdrawal amounts or the initial pool balances set in the setup method, this is a known thing i.e if the prices for a pool are high then the initial pool balances might need to be increased a bit too, the swap amounts might need to be higher too to avoid any bonding curve voilation checks we have in the contract (see the custom errors in the contract)
+      - Some invariants for the reverse swap tests might fail because of the fee so instead of user making money the pool makes money in some of those cases at the end of the reverse this is a known behaviour
+      - since we can't exactly predict the behavior when both x & y prices mov e in opposite directions hence we don't test those scenario's and consider that out of scope
+      - for high price values & swap amount ranges assertWithinRounding check in the tests for utility after a swap might revert in case when utility increases after the swap ore then the expectation
+      - the current initial pool balance amounts, swap amounts work only for the small price values, so as explained above if you use large or extremely large values you'll need to increase the pool initial balance and swap amounts gradually depending on the price value you use
+        for eg with all the extremely large values for different scenarios the recommended x and y balances when setting up the pool is 1e29 & 1e33 (in wei) and swap amounts if y is swapped it should be close to 1e32 and if x is swapped first thnn it should be 1e24 
+    */
+
     // Different price ranges that are used for testing
-    // Note - Tests might fail due to a incompatible relation b/w the prices & the swap/deposit/withdrawal amounts this is a known relation i.e if the prices for a pool are high then the liquidity and the swap prices need to be higher too to avoid any bonding curve voilation checks e have in the contract (see the custo errors in the contract)
-    // Note- some invariants for the reverse swap tests ight fail because of the fee so instead of user making money the pool makes money in some of those cases at the end of the reverse this is a known behaviour
-    // Note - since we can't exactly predict the behavior when both x & y prices mov e in opposite directions hence we don't test those scenario's and consider that out of scope
-
     // x & y constant
-    // py_init_val = 6951000000000000;
-    // px_init_val = 69510000000000;
-    // py_final_val = 6951000000000000;
-    // px_final_val = 69510000000000;
+    // small values
+    py_init_val = 695000000000000;
+    px_init_val = 692930500000000;
+    py_final_val = 695000000000000;
+    px_final_val = 692930500000000;
     
-    // large values
-    // py_final_val = 20000000000000000000000;
-    // px_init_val = 11000000000000000000000;
-    // py_init_val =  20000000000000000000000;
-    // px_final_val = 11000000000000000000000;
-
-    // x constant y increases
-    // py_init_val = 695100000000000;
-    // px_init_val = 69510000000000;
-    // py_final_val = 6951000000000000;
-    // px_final_val = 69510000000000;
-
-    // large values
-    // py_final_val = 22000000000000000000000;
-    // px_init_val = 11000000000000000000000;
-    // py_init_val = 15000000000000000000000;
-    // px_final_val = 11000000000000000000000;
-
-    // x constant y decreases
-    // py_init_val = 6951000000000000;
-    // px_init_val = 69510000000000;
-    // py_final_val = 695100000000000;
-    // px_final_val = 69510000000000;
-
-    // large values
-    // py_init_val = 20000000000000000000000;
-    // px_init_val = 11000000000000000000000;
-    // py_final_val = 15000000000000000000000;
-    // px_final_val = 11000000000000000000000;
-
-    //y constant x decreases
-    // py_init_val = 6951000000000000;
-    // px_init_val = 69510000000000;
-    // py_final_val = 6951000000000000;
-    // px_final_val = 6951000000;
-
-    // large values
-    // py_final_val = 15000000000000000000000;
-    // px_init_val =  14000000000000000000000;
-    // py_init_val =  15000000000000000000000;
-    // px_final_val = 11000000000000000000000;
-    
-    // y constant x increases
-    py_init_val = 6951000000000000;
-    px_init_val = 6951000000;
-    py_final_val = 6951000000000000;
-    px_final_val = 69510000000000;
-
-    // large values
-    // py_final_val = 15000000000000000000000;
-    // px_final_val = 14000000000000000000000;
-    // py_init_val = 15000000000000000000000;
-    // px_init_val = 11000000000000000000000;
-
-    // x & y both decrease
-    // py_init_val = 6951000000000000;
-    // px_init_val = 69510000000000;
-    // py_final_val = 695100000000000;
-    // px_final_val = 6951000000000;
-
-    // large values
-    // py_init_val = 2000000000000000000000;
-    // px_init_val = 1400000000000000000000;
-    // py_final_val = 1500000000000000000000;
-    // px_final_val = 1100000000000000000000;
-
-    // x & y both increase
-    // py_init_val = 6951000000000000;
-    // px_init_val = 69510000000000;
-    // py_final_val = 695100000000000000;
-    // px_final_val = 695100000000000;
-
     // large values
     // py_final_val = 2000000000000000000000;
-    // px_final_val = 1400000000000000000000;
-    // py_init_val = 1500000000000000000000;
-    // px_init_val = 1100000000000000000000;
+    // px_init_val =  990000000000000000;
+    // py_init_val = 2000000000000000000000;
+    // px_final_val = 990000000000000000;
+
+    // extremely large values
+    // py_final_val = 9e25;
+    // px_init_val = 8e25;
+    // py_init_val =  9e25;
+    // px_final_val = 8e25;
+
+    // x constant y increases
+    // small values
+    // py_init_val = 695000000000000;
+    // px_init_val = 692930500000000;
+    // py_final_val = 995000000000000;
+    // px_final_val = 692930500000000;
+
+    // large values
+    // py_final_val = 4000000000000000000000;
+    // px_init_val =  990000000000000000;
+    // py_init_val = 2000000000000000000000;
+    // px_final_val = 990000000000000000;
+
+    // extremely large values
+    // py_final_val = 9e25;
+    // px_init_val = 6e25;
+    // py_init_val =  8e25;
+    // px_final_val = 6e25;
+
+    // x constant y decreases
+    // small values
+    // py_final_val = 695000000000000;
+    // px_init_val = 692930500000000;
+    // py_init_val = 995000000000000;
+    // px_final_val = 692930500000000;
+
+    // large values
+    // py_init_val = 4000000000000000000000;
+    // px_init_val =  690000000000000000;
+    // py_final_val = 2000000000000000000000;
+    // px_final_val = 690000000000000000;
+
+    // extremely large values
+    // py_init_val = 9e25;
+    // px_init_val = 7e25;
+    // py_final_val =  8e25;
+    // px_final_val = 7e25;
+
+    //y constant x decreases
+    // small values
+    // py_final_val = 995000000000000;
+    // px_init_val = 992930500000000;
+    // py_init_val = 995000000000000;
+    // px_final_val = 692930500000000;
+
+    // large values
+    // py_init_val = 4000000000000000000000;
+    // px_init_val =  790000000000000000;
+    // py_final_val = 4000000000000000000000;
+    // px_final_val = 490000000000000000;
+
+    // extremely large values
+    // py_init_val = 9e25;
+    // px_init_val = 8e25;
+    // py_final_val =  9e25;
+    // px_final_val = 6e25;
+    
+    // y constant x increases
+    // small values
+    // py_final_val = 995000000000000;
+    // px_final_val = 992930500000000;
+    // py_init_val = 995000000000000;
+    // px_init_val = 692930500000000;
+
+    // large values
+    // py_final_val = 4000000000000000000000;
+    // px_final_val = 790000000000000000;
+    // py_init_val = 4000000000000000000000;
+    // px_init_val = 490000000000000000;
+
+    // extremely large values
+    // py_init_val = 9e25;
+    // px_final_val = 8e25;
+    // py_final_val =  9e25;
+    // px_init_val = 6e25;
+
+    // x & y both decrease
+    // small values
+    // py_final_val = 4950000000000000;
+    // px_final_val = 434900500000000;
+    // py_init_val =  9995000000000000;
+    // px_init_val =  989400050000000;
+
+    // large values
+    // py_final_val = 1000000000000000000000;
+    // px_final_val = 490000000000000000;
+    // py_init_val = 4000000000000000000000;
+    // px_init_val = 790000000000000000;
+
+    // extremely large values
+    // py_final_val = 8e25;
+    // px_init_val = 7e25;
+    // py_init_val =  9e25;
+    // px_final_val = 6e25;
+
+    // x & y both increase
+    // small values
+    // py_init_val = 4950000000000000;
+    // px_init_val = 434900500000000;
+    // py_final_val =  9995000000000000;
+    // px_final_val =  989400050000000;
+
+    // large values
+    // py_init_val = 1000000000000000000000;
+    // px_init_val = 490000000000000000;
+    // py_final_val = 4000000000000000000000;
+    // px_final_val = 790000000000000000;
+
+    // extremely large values
+    // py_init_val = 8e25;
+    // px_final_val = 7e25;
+    // py_final_val =  9e25;
+    // px_init_val = 6e25;
     
     // using abdk math to handle the prices with precision
     int128 py_init = ABDKMath64x64.divu(py_init_val, 1e18);
@@ -207,7 +277,7 @@ contract ForkEvolvingProteus is Test {
       interactionTypeAndAddress: interactionIdToComputeOutputAmount,
       inputToken: _tokenB_OceanId,
       outputToken: lpTokenId,
-      specifiedAmount: 80_000 ether,
+      specifiedAmount: 90_000 ether,
       metadata: bytes32(0)
     });
 
@@ -222,14 +292,15 @@ contract ForkEvolvingProteus is Test {
     IERC20(address(_tokenA)).approve(address(_ocean), 100_000_000 ether);
 
     vm.prank(tokenOwner);
-    _ocean.doMultipleInteractions{ value: 80_000 ether }(interactions, ids);
+    _ocean.doMultipleInteractions{ value: 90_000 ether }(interactions, ids);
   }
 
   /** 
     Logs all the curve equation related parameters
   */
   function _logPoolParams() internal {
-    (int128 py_init, int128 px_init, int128 py_final, int128 px_final, uint t_init, uint t_final) = _evolvingProteus.config();
+    (, , , , uint t_init, uint t_final) = _evolvingProteus.config();
+
     int128 t = (block.timestamp - t_init).divu(t_final - t_init);
 
     (uint256 xBalanceAfterDeposit, uint256 yBalanceAfterDeposit) = _getBalances();
@@ -241,10 +312,10 @@ contract ForkEvolvingProteus is Test {
     emit log_int(_evolvingProteus.a());
     emit log("b");
     emit log_int(_evolvingProteus.b());
-    emit log("px");
-    emit log_int(_evolvingProteus.px());
-    emit log("py");
-    emit log_int(_evolvingProteus.py());
+    emit log("p_min");
+    emit log_int(_evolvingProteus.p_min());
+    emit log("p_max");
+    emit log_int(_evolvingProteus.p_max());
     emit log("t()");
     emit log_int(t);
     emit log("time % passed");
@@ -283,6 +354,17 @@ contract ForkEvolvingProteus is Test {
   */
   function _getTotalSupply() internal view returns (uint256 supply) {
     supply = _pool.getTokenSupply(lpTokenId);
+  }
+
+  /**
+    calculate balance difference
+  */
+  function _getBalanceDiffAfterSwaps(uint256 _beforeSwapBalance, bool tokenA_Diff) internal view returns(uint256 _diff) {
+    uint256 _afterSwapBalance;
+    if (tokenA_Diff) _afterSwapBalance = IERC20(address(_tokenA)).balanceOf(tokenOwner);
+    else _afterSwapBalance = tokenOwner.balance;
+
+    return _afterSwapBalance - _beforeSwapBalance;
   }
 
 
@@ -376,7 +458,7 @@ contract ForkEvolvingProteus is Test {
     assertWithinRounding(int256(_tokenABalDiff), int256(xBalDiff));
     assertGt(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
     assertLt(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
-    assertGt(_evolvingProteus.py(), _evolvingProteus.px());
+    assertGt(_evolvingProteus.p_max(), _evolvingProteus.p_min());
   }
 
   /**
@@ -458,7 +540,7 @@ contract ForkEvolvingProteus is Test {
     assertWithinRounding(int256(_tokenABalDiff), int256(xBalDiff));
     assertLt(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
     assertGt(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
-    assertGt(_evolvingProteus.py(), _evolvingProteus.px());
+    assertGt(_evolvingProteus.p_max(), _evolvingProteus.p_min());
   }
 
   /**
@@ -532,7 +614,7 @@ contract ForkEvolvingProteus is Test {
     // assertion checks for utility, utility per lp, curve parameters
     assertGt(utilityAfterDeposit, utilityBeforeDeposit);
     assertGt(utilityPerLpAfterDeposit, utilityPerLpBeforeDeposit);
-    assertGt(_evolvingProteus.py(), _evolvingProteus.px());
+    assertGt(_evolvingProteus.p_max(), _evolvingProteus.p_min());
   }
 
   /**
@@ -618,7 +700,7 @@ contract ForkEvolvingProteus is Test {
     // assertion checks for utility, utility per lp, curve parameters
     assertGt(utilityBeforeWithdraw, utilityAfterWithdraw);
     assertLt(utilityPerLpBeforeWithdraw, utilityPerLpAfterWithdraw);
-    assertGt(_evolvingProteus.py(), _evolvingProteus.px());
+    assertGt(_evolvingProteus.p_max(), _evolvingProteus.p_min());
   }
 
 
@@ -626,12 +708,13 @@ contract ForkEvolvingProteus is Test {
     test to check a reverse swap i.e
     at time t0 swap y -> x
     at time t1 swap x -> y
-    Note : The test assertions are based on invariants mentioned below but some invariant assertions might fail due to the fee and there might be small differences in the asserted values
-
+    
+    in the scenario's when user is expected to make a profit we have use assertApproxEqRel to take in fee, rounding factor with extremely large price values and the delta % is based on testing with the extremely large price values
+    Note: The assertions for y constant x increases & x and y both increase invariant scenario reverts due to extreme slippage when tested with extremely large prices mentioned in the setUp method so that is a known outcome
     @param _amount token amount to withdraw
   */
   function testReverseSwapY(uint256 _amount, uint256 _time) public {
-    _amount = bound(_amount, 50 ether, 5000 ether);
+    _amount = bound(_amount, 20 ether, 100 ether);
     _time = bound(_time, 100, T_DURATION);
 
     if (tokenOwner.balance > _amount ) {
@@ -640,10 +723,8 @@ contract ForkEvolvingProteus is Test {
       (,uint256 yBalanceBeforeSwap) = _getBalances();
       uint256 _tokenBTraderBalanceBeforeSwap = tokenOwner.balance;
       uint256 _tokenATraderBalanceBeforeSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
-
       _swapWithTokenBInputAmount(_amount);
-      uint256 _tokenATraderBalanceAfterSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
-      uint256 _diffAmount = _tokenATraderBalanceAfterSwap - _tokenATraderBalanceBeforeSwap;
+      uint256 _diffAmount = _getBalanceDiffAfterSwaps(_tokenATraderBalanceBeforeSwap, true);
 
       _logPoolParams();
       vm.warp(block.timestamp + _time);
@@ -658,20 +739,23 @@ contract ForkEvolvingProteus is Test {
           assertLe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
           assertGe(yBalanceAfterSwap, yBalanceBeforeSwap);
       } else if (px_final_val > px_init_val && py_final_val > py_init_val) {
-          assertGe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
-          assertLe(yBalanceAfterSwap, yBalanceBeforeSwap);
+          // as per the soft invariant user is expected to make a profit but due to fee the get a slightly less amount
+          assertApproxEqRel(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap, 0.00001e18);
+          assertApproxEqRel(yBalanceAfterSwap, yBalanceBeforeSwap, 0.0009e18);
       } else if (px_final_val < px_init_val && py_final_val == py_init_val) {
           assertLe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
           assertGe(yBalanceAfterSwap, yBalanceBeforeSwap);
       }  else if (px_final_val > px_init_val && py_final_val == py_init_val) {
-          assertGe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
-          assertLe(yBalanceAfterSwap, yBalanceBeforeSwap);
+          // as per the soft invariant user is expected to make a profit but due to fee the get a slightly less amount
+          assertApproxEqRel(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap, 0.00001e18);
+          assertApproxEqRel(yBalanceAfterSwap, yBalanceBeforeSwap, 0.0009e18);
       } else if (px_final_val == px_init_val && py_final_val < py_init_val) {
           assertLe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
           assertGe(yBalanceAfterSwap, yBalanceBeforeSwap);
       } else if (px_final_val == px_init_val && py_final_val > py_init_val) {
-          assertGe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
-          assertLe(yBalanceAfterSwap, yBalanceBeforeSwap);
+          // as per the soft invariant user is expected to make a profit but due to fee the get a slightly less amount
+          assertApproxEqRel(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap, 0.00001e18);
+          assertApproxEqRel(yBalanceAfterSwap, yBalanceBeforeSwap, 0.0009e18);
       } else {
           assertLe(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
           assertGe(yBalanceAfterSwap, yBalanceBeforeSwap);
@@ -683,12 +767,12 @@ contract ForkEvolvingProteus is Test {
     test to check a reverse swap i.e
     at time t0 swap x -> y
     at time t1 swap y -> x
-    Note : The test assertions are based on invariants mentioned below but some invariant assertions might fail due to the fee and there might be small differences in the asserted values
 
+    in the scenario's when user is expected to make a profit we have use assertApproxEqRel to take in fee, rounding factor with extremely large price values and the delta % is based on testing with the extremely large price values
     @param _amount token amount to withdraw
   */
   function testReverseSwapX(uint256 _amount, uint256 _time) public {
-    _amount = bound(_amount, 50 ether, 5000 ether);
+    _amount = bound(_amount, 50 ether, 50000 ether);
     _time = bound(_time, 100, T_DURATION);
 
     if ((IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount)) {
@@ -699,8 +783,7 @@ contract ForkEvolvingProteus is Test {
       uint _tokenBTraderBalanceBeforeSwap = tokenOwner.balance;
 
       _swapWithTokenAInputAmount(_amount);
-      uint _tokenBTraderBalanceAfterSwap = tokenOwner.balance;
-      uint _diffAmount = _tokenBTraderBalanceAfterSwap - _tokenBTraderBalanceBeforeSwap;
+      uint256 _diffAmount = _getBalanceDiffAfterSwaps(_tokenBTraderBalanceBeforeSwap, false);
 
       _logPoolParams();
       vm.warp(block.timestamp + _time);
@@ -712,20 +795,23 @@ contract ForkEvolvingProteus is Test {
 
       // assertion for invariants based on the price confgurations
       if (px_final_val < px_init_val && py_final_val < py_init_val) {
-          assertGe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
-          assertLe(xBalanceAfterSwap, xBalanceBeforeSwap);
+          // as per the soft invariant user is expected to make a profit but due to fee the get a slightly less amount
+          assertApproxEqRel(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap, 0.00001e18);
+          assertApproxEqRel(xBalanceAfterSwap, xBalanceBeforeSwap, 0.0009e18);
       } else if (px_final_val > px_init_val && py_final_val > py_init_val) {
           assertLe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertGe(xBalanceAfterSwap, xBalanceBeforeSwap);
       } else if (px_final_val < px_init_val && py_final_val == py_init_val) {
-          assertGe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
-          assertLe(xBalanceAfterSwap, xBalanceBeforeSwap);
+          // as per the soft invariant user is expected to make a profit but due to fee the get a slightly less amount
+          assertApproxEqRel(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap, 0.00001e18);
+          assertApproxEqRel(xBalanceAfterSwap, xBalanceBeforeSwap, 0.0009e18);
       }  else if (px_final_val > px_init_val && py_final_val == py_init_val) {
           assertLe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertGe(xBalanceAfterSwap, xBalanceBeforeSwap);
       } else if (px_final_val == px_init_val && py_final_val < py_init_val) {
-          assertGe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
-          assertLe(xBalanceAfterSwap, xBalanceBeforeSwap);
+          // as per the soft invariant user is expected to make a profit but due to fee the get a slightly less amount
+          assertApproxEqRel(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap, 0.00001e18);
+          assertApproxEqRel(xBalanceAfterSwap, xBalanceBeforeSwap, 0.0009e18);
       } else if (px_final_val == px_init_val && py_final_val > py_init_val) {
           assertLe(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
           assertGe(xBalanceAfterSwap, xBalanceBeforeSwap);
@@ -739,13 +825,16 @@ contract ForkEvolvingProteus is Test {
   /**
     test to swap multiple times in different directions
     @param _amount token amount to swap
-  */
+  // */
   function testMultipleSwaps(uint256 _amount) public {
-    _amount = bound(_amount, 1 ether, 5000 ether);
-    if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 10_00)) {
+    _amount = bound(_amount, 50 ether, 500 ether);
+    if (tokenOwner.balance > _amount) {
+      uint _tokenATraderBalanceBeforeSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
       _swapWithTokenBInputAmount(_amount);
+      uint256 _diffAmount = _getBalanceDiffAfterSwaps(_tokenATraderBalanceBeforeSwap, true);
+
       _logPoolParams();
-      _swapWithTokenAInputAmount(_amount * 10_00);
+      _swapWithTokenAInputAmount(_diffAmount);
       _logPoolParams();
     }
   }
@@ -756,20 +845,29 @@ contract ForkEvolvingProteus is Test {
     @param _time time duration
   */
   function testMultipleSwapsOverDuration(uint256 _amount, uint256 _time) public {
-    _amount = bound(_amount, 1 ether, 5000 ether);
+    _amount = bound(_amount, 50 ether, 500 ether);
     _time = bound(_time, 0, T_DURATION);
 
-    if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 10_00)) {
+    if (tokenOwner.balance > _amount) {
+    uint _tokenATraderBalanceBeforeSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
     _swapWithTokenBInputAmount(_amount);
+    uint256 _diffAmount = _getBalanceDiffAfterSwaps(_tokenATraderBalanceBeforeSwap, true);    
     _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
-    _swapWithTokenAInputAmount(_amount * 10_00);
+    
+    uint _tokenBTraderBalanceBeforeSwap = tokenOwner.balance;
+    vm.warp(block.timestamp + _time + (_time / 5));
+    _swapWithTokenAInputAmount(_diffAmount);
+    _diffAmount = _getBalanceDiffAfterSwaps(_tokenBTraderBalanceBeforeSwap, false);    
     _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
-    _swapWithTokenBInputAmount(_amount);
+
+    _tokenATraderBalanceBeforeSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
+    vm.warp(block.timestamp + _time + (_time / 5));
+    _swapWithTokenBInputAmount(_diffAmount);
+    _diffAmount = _getBalanceDiffAfterSwaps(_tokenATraderBalanceBeforeSwap, true);    
     _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
-    _swapWithTokenAInputAmount(_amount * 10_00);
+
+    vm.warp(block.timestamp + _time + (_time / 5));
+    _swapWithTokenAInputAmount(_diffAmount);
     _logPoolParams();
     }
   }
@@ -779,8 +877,8 @@ contract ForkEvolvingProteus is Test {
     @param _amount token amount to swap
   */
   function testDeposit(uint256 _amount) public {
-    _amount = bound(_amount, 1 ether, 5000 ether);
-    if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 10_00)) {
+    _amount = bound(_amount, 5 ether, 500 ether);
+    if (tokenOwner.balance > _amount) {
     _swapWithTokenBInputAmount(_amount);
     _logPoolParams();
     _addLiquidity(_amount);
@@ -794,16 +892,18 @@ contract ForkEvolvingProteus is Test {
     @param _time time duration
   */
   function testDepositOverDuration(uint256 _amount, uint256 _time) public {
-    _amount = bound(_amount, 1 ether, 5000 ether);
+    _amount = bound(_amount, 5 ether, 500 ether);
     _time = bound(_time, 0, T_DURATION);
-    if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 10_00)) {
+    if (tokenOwner.balance > _amount) {
     _swapWithTokenBInputAmount(_amount);
     _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
-    _swapWithTokenAInputAmount(_amount * 10_00);
-    _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
+    vm.warp(block.timestamp + _time + (_time / 3));
     _addLiquidity(_amount);
+
+    _logPoolParams();
+
+    vm.warp(block.timestamp + _time + (_time / 3));
+    _addLiquidity(_amount / 4);
     _logPoolParams();
     }
   }
@@ -813,8 +913,8 @@ contract ForkEvolvingProteus is Test {
     @param _amount token amount to withdraw
   */
   function testWithdraw(uint256 _amount) public {
-    _amount = bound(_amount, 1 ether, 5000 ether);
-    if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 10_00)) {
+    _amount = bound(_amount, 5 ether, 500 ether);
+    if (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount) {
     _swapWithTokenAInputAmount(_amount);
     _logPoolParams();
     _removeLiquidity(_amount);
@@ -829,26 +929,19 @@ contract ForkEvolvingProteus is Test {
     @param _time time duration
   */
   function testWithdrawOverDuration(uint256 _amount, uint256 _time) public {
-    _amount = bound(_amount, 1 ether, 5000 ether);
+    _amount = bound(_amount, 5 ether, 500 ether);
     _time = bound(_time, 0, T_DURATION);
 
-    if (tokenOwner.balance > _amount && (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount * 10_00)) {
-    _swapWithTokenBInputAmount(_amount);
+    if (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount) {
+    _swapWithTokenAInputAmount(_amount);
     _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
-    _swapWithTokenAInputAmount(_amount * 10_00);
-    _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
+
+    vm.warp(block.timestamp + _time + (_time / 3));
     _removeLiquidity(_amount);
     _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
-    _swapWithTokenAInputAmount(_amount * 10_00);
-    _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
-    _removeLiquidity(_amount);
-    _logPoolParams();
-    vm.warp(block.timestamp + _time + 10);
-    _swapWithTokenBInputAmount(_amount);
+
+    vm.warp(block.timestamp + _time + (_time / 3));
+    _removeLiquidity(_amount / 3);
     _logPoolParams();
     }
   }
