@@ -219,11 +219,12 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     //*********************************************************************//
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
-    error BoundaryError(int256 x, int256 y);
     error AmountError();
-    error CurveError(int256 errorValue); 
     error BalanceError(int256 x, int256 y);
+    error BoundaryError(int256 x, int256 y);
+    error CurveError(int256 errorValue); 
     error InvalidPrice();
+    error MinimumAllowedPriceExceeded();
     error MaximumAllowedPriceExceeded();
     error MaximumAllowedPriceRatioExceeded();
 
@@ -248,7 +249,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     ) { 
         // price value checks
         if (py_init >= MAX_PRICE_VALUE || py_final >= MAX_PRICE_VALUE) revert MaximumAllowedPriceExceeded();
-        if (px_init <= MIN_PRICE_VALUE || px_final <= MIN_PRICE_VALUE) revert MaximumAllowedPriceExceeded();
+        if (px_init <= MIN_PRICE_VALUE || px_final <= MIN_PRICE_VALUE) revert MinimumAllowedPriceExceeded();
 
         // at all times x price should be less than y price
         if (py_init <= px_init) revert InvalidPrice();
