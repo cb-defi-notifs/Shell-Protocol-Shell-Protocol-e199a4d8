@@ -4,7 +4,7 @@
 pragma solidity =0.8.10;
 
 import "abdk-libraries-solidity/ABDKMath64x64.sol";
-import {EvolvingProteus, LibConfig, Config} from "../proteus/EvolvingProteus.sol";
+import {EvolvingProteus} from "../proteus/EvolvingProteus.sol";
 import {SpecifiedToken} from "../proteus/ILiquidityPoolImplementation.sol";
 
 /**
@@ -13,7 +13,6 @@ import {SpecifiedToken} from "../proteus/ILiquidityPoolImplementation.sol";
 contract EvolvingInstrumentedProteus is EvolvingProteus {
     using ABDKMath64x64 for int128;
     using ABDKMath64x64 for int256;
-    using LibConfig for Config;
 
     int128 private constant ABDK_ONE = int128(int256(1 << 64));
 
@@ -65,10 +64,10 @@ contract EvolvingInstrumentedProteus is EvolvingProteus {
     }
 
     function tInit() view public returns (uint256) {
-        return config.t_init;
+        return config.t_init();
     }
     function tFinal() view public returns (uint256) {
-        return config.t_final;
+        return config.t_final();
     }
     function a() view public returns (int256) {
         return config.a();
@@ -84,7 +83,11 @@ contract EvolvingInstrumentedProteus is EvolvingProteus {
     }
 
     function printConfig() view public returns (int128, int128, int128, int128) {
-        return (config.py_init, config.px_init, config.py_final, config.px_final);
+        return (config.py_init(), config.px_init(), config.py_final(), config.px_final());
+    }
+
+    function data() public view returns (int128,int128,int128,int128,uint256,uint256) {
+        return (config.py_init(), config.px_init(), config.py_final(), config.px_final(), config.t_init(), config.t_final());
     }
 
     function reserveTokenSpecified(

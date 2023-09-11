@@ -7,15 +7,6 @@ import "abdk-libraries-solidity/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import {ILiquidityPoolImplementation, SpecifiedToken} from "./ILiquidityPoolImplementation.sol";
 
-struct Config {
-    int128 py_init;
-    int128 px_init;
-    int128 py_final;
-    int128 px_final;
-    uint256 t_init;
-    uint256 t_final;
-}
-
 /**
      * @dev The contract is called with the following parameters:
      y_init: the initial price at the y axis
@@ -41,103 +32,127 @@ struct Config {
            Max reserve ratio: the ratio between the two reserves cannot go above a certain ratio. Any transaction that results in the reserves going beyond this ratio will fall.
 */
 
-library LibConfig {
+contract Config {
     using ABDKMath64x64 for uint256;
     using ABDKMath64x64 for int256;
     using ABDKMath64x64 for int128;
 
     int128 constant ABDK_ONE = int128(int256(1 << 64));
 
+    /** 
+     @notice 
+     The initial price at the y axis
+    */ 
+    int128 immutable public py_init;
+
+    /** 
+     @notice 
+     The initial price at the x axis
+    */ 
+    int128 immutable public px_init;
+
+    /** 
+     @notice 
+     The final price at the y axis
+    */ 
+    int128 immutable public py_final;
+
+    /** 
+     @notice 
+     The final price at the x axis
+    */ 
+    int128 immutable public px_final;
+
+    /** 
+     @notice 
+     curve evolution start time
+    */ 
+    uint256 immutable public t_init;
+
+    /** 
+     @notice 
+     curve evolution end time
+    */ 
+    uint256 immutable public t_final;
+
+    /** 
+     @notice 
+     duration over which the curve will evolve
+    */ 
+    uint256 immutable public duration;
+
     /**
        @notice Calculates the equation parameters "a" & "b" described above & returns the config instance
-       @param py_init The initial price at the y axis
-       @param px_init The initial price at the x axis
-       @param py_final The final price at the y axis
-       @param px_final The final price at the x axis
+       @param _py_init The initial price at the y axis
+       @param _px_init The initial price at the x axis
+       @param _py_final The final price at the y axis
+       @param _px_final The final price at the x axis
        @param _duration duration over which the curve will evolve
      */
-    function newConfig(
-        int128 py_init,
-        int128 px_init,
-        int128 py_final,
-        int128 px_final,
+     constructor(
+        int128 _py_init,
+        int128 _px_init,
+        int128 _py_final,
+        int128 _px_final,
         uint256 _duration
-    ) public view returns (Config memory) {
-
-        return Config(
-            py_init,
-            px_init,
-            py_final,
-            px_final,
-            block.timestamp,
-            block.timestamp + _duration
-        );
-    }
+     ) {
+        py_init = _py_init;
+        px_init = _px_init;
+        py_final = _py_final;
+        px_final = _px_final;
+        t_init = block.timestamp;
+        t_final = block.timestamp + _duration;
+        duration = _duration;
+     }
 
     /**
        @notice Calculates the time that has passed since deployment
-       @param self config instance
     */
-    function elapsed(Config storage self) public view returns (uint256) {
-        return block.timestamp - self.t_init;
+    function elapsed() public view returns (uint256) {
+        return block.timestamp - t_init;
     }
 
     /**
        @notice Calculates the time as a percent of total duration
-       @param self config instance
     */
-    function t(Config storage self) public view returns (int128) {
-        return elapsed(self).divu(duration(self));
+    function t() public view returns (int128) {
+        return elapsed().divu(duration);
     }
 
     /**
        @notice The minimum price (at the x asymptote) at the current block
-       @param self config instance
     */
-    function p_min(Config storage self) public view returns (int128) {
-        if (t(self) > ABDK_ONE) return self.px_final;
-        else return self.px_init.mul(ABDK_ONE.sub(t(self))).add(self.px_final.mul(t(self)));
+    function p_min() public view returns (int128) {
+        if (t() > ABDK_ONE) return px_final;
+        else return px_init.mul(ABDK_ONE.sub(t())).add(px_final.mul(t()));
     }
 
     /**
        @notice The maximum price (at the y asymptote) at the current block
-       @param self config instance
     */
-    function p_max(Config storage self) public view returns (int128) {
-        if (t(self) > ABDK_ONE) return self.py_final;
-        else return self.py_init.mul(ABDK_ONE.sub(t(self))).add(self.py_final.mul(t(self)));
+    function p_max() public view returns (int128) {
+        if (t() > ABDK_ONE) return py_final;
+        else return py_init.mul(ABDK_ONE.sub(t())).add(py_final.mul(t()));
     }
 
     /**
        @notice Calculates the a variable in the curve eq which is basically a sq. root of the inverse of y instantaneous price
-       @param self config instance
     */
-    function a(Config storage self) public view returns (int128) {
-        return (p_max(self).inv()).sqrt();
+    function a() public view returns (int128) {
+        return (p_max().inv()).sqrt();
     }
 
     /**
        @notice Calculates the b variable in the curve eq which is basically a sq. root of the inverse of x instantaneous price
-       @param self config instance
     */
-    function b(Config storage self) public view returns (int128) {
-        return p_min(self).sqrt();
-    }
-
-
-    /**
-       @notice Calculates the duration of the curve evolution
-       @param self config instance
-    */
-    function duration(Config storage self) public view returns (uint256) {
-        return self.t_final - self.t_init;
+    function b() public view returns (int128) {
+        return p_min().sqrt();
     }
 }
 
 contract EvolvingProteus is ILiquidityPoolImplementation {
     using ABDKMath64x64 for int128;
     using ABDKMath64x64 for int256;
-    using LibConfig for Config;
 
     /** 
      @notice 
@@ -198,7 +213,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
       @notice 
       max price ratio
     */ 
-    int256 constant MAX_PRICE_RATIO = 10**4; // to be comparable with the prices calculated through abdk math
+    uint256 constant MAX_PRICE_RATIO = 10**4; // to be comparable with the prices calculated through abdk math
     /** 
       @notice 
       flag to indicate increase of the pool's perceived input or output
@@ -213,7 +228,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
       @notice 
       pool config
     */ 
-    Config public config;
+    Config public immutable config;
 
 
     //*********************************************************************//
@@ -258,10 +273,10 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         if (py_final <= px_final) revert InvalidPrice();
 
         // max. price ratio check
-        if (py_init.div(py_init.sub(px_init)) > ABDKMath64x64.divu(uint(MAX_PRICE_RATIO), 1)) revert MaximumAllowedPriceRatioExceeded();
-        if (py_final.div(py_final.sub(px_final)) > ABDKMath64x64.divu(uint(MAX_PRICE_RATIO), 1)) revert MaximumAllowedPriceRatioExceeded();
+        if (py_init.div(py_init.sub(px_init)) > ABDKMath64x64.divu(MAX_PRICE_RATIO, 1)) revert MaximumAllowedPriceRatioExceeded();
+        if (py_final.div(py_final.sub(px_final)) > ABDKMath64x64.divu(MAX_PRICE_RATIO, 1)) revert MaximumAllowedPriceRatioExceeded();
 
-        config = LibConfig.newConfig(py_init, px_init, py_final, px_final, duration);
+        config = new Config(py_init, px_init, py_final, px_final, duration);
       }
 
 
@@ -540,6 +555,10 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
                     utility,
                     _getPointGivenXandUtility
                 );
+
+                // balance checks with consideration the computed amount
+                computedAmount = _applyFeeByRounding(yf - yi, feeDirection);
+                _checkBalances(xi + specifiedAmount, yi + computedAmount);
             } else {
                 int256 fixedPoint = yi + roundedSpecifiedAmount;
                 (xf, yf) = _findFinalPoint(
@@ -547,16 +566,11 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
                     utility,
                     _getPointGivenYandUtility
                 );
+
+                // balance checks with consideration the computed amount
+                computedAmount = _applyFeeByRounding(xf - xi, feeDirection);
+                _checkBalances(xi + computedAmount, yi + specifiedAmount);
             }
-        }
-        
-        // balance checks with consideration the computed amount
-        if (specifiedToken == SpecifiedToken.X) {
-            computedAmount = _applyFeeByRounding(yf - yi, feeDirection);
-            _checkBalances(xi + specifiedAmount, yi + computedAmount);
-        } else {
-            computedAmount = _applyFeeByRounding(xf - xi, feeDirection);
-            _checkBalances(xi + computedAmount, yi + specifiedAmount);
         }
     }
 
@@ -638,24 +652,25 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         // get final price points
         int256 xf;
         int256 yf;
-        if (specifiedToken == SpecifiedToken.X)
+        if (specifiedToken == SpecifiedToken.X) {
+
             (xf, yf) = _findFinalPoint(
                 yi,
                 uf,
                 _getPointGivenYandUtility
             );
-        else
+
+            // balance checks with consideration the computed amount
+            computedAmount = _applyFeeByRounding(xf - xi, feeDirection);
+            _checkBalances(xi + computedAmount, yf);
+        } else {
             (xf, yf) = _findFinalPoint(
                 xi,
                 uf,
                 _getPointGivenXandUtility
             );
 
-        // balance checks with consideration the computed amount
-        if (specifiedToken == SpecifiedToken.X) {
-            computedAmount = _applyFeeByRounding(xf - xi, feeDirection);
-            _checkBalances(xi + computedAmount, yf);
-        } else {
+            // balance checks with consideration the computed amount
             computedAmount = _applyFeeByRounding(yf - yi, feeDirection);
             _checkBalances(xf, yi + computedAmount);
         }
@@ -729,8 +744,15 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         int256 cQuad = x * y;
 
         int256 disc = int256(Math.sqrt(uint256((bQuad**2 - (aQuad.muli(cQuad)*4)))));
-        int256 r0 = (-bQuad*MULTIPLIER + disc*MULTIPLIER) / aQuad.mul(two).muli(MULTIPLIER);
-        int256 r1 = (-bQuad*MULTIPLIER - disc*MULTIPLIER) / aQuad.mul(two).muli(MULTIPLIER);
+
+        int256 denQuad = aQuad.mul(two).muli(MULTIPLIER);
+        int256 num1 = -bQuad*MULTIPLIER;
+        int256 num2 = disc*MULTIPLIER;
+
+        int256 r0 = (num1 + num2) / denQuad; 
+        int256 r1 = (num1 - num2) / denQuad;
+        // int256 r0 = (-bQuad*MULTIPLIER + disc*MULTIPLIER) / aQuad.mul(two).muli(MULTIPLIER);
+        // int256 r1 = (-bQuad*MULTIPLIER - disc*MULTIPLIER) / aQuad.mul(two).muli(MULTIPLIER);
 
         if(a < 0 && b < 0) utility = (r0 > r1) ? r1 : r0;
         else utility = (r0 > r1) ? r0 : r1;
@@ -841,7 +863,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         pure
         returns (int256 roundedAmount)
     {
-        bool negative = amount < 0 ? true : false;
+        bool negative = amount < 0;
         uint256 absoluteValue = negative ? uint256(-amount) : uint256(amount);
         // FIXED_FEE * 2 because we will possibly deduct the FIXED_FEE from
         // this amount, and we don't want the final amount to be less than

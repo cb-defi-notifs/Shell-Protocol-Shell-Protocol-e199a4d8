@@ -299,7 +299,7 @@ contract ForkEvolvingProteus is Test {
     Logs all the curve equation related parameters
   */
   function _logPoolParams() internal {
-    (, , , , uint t_init, uint t_final) = _evolvingProteus.config();
+    (, , , , uint t_init, uint t_final) = _evolvingProteus.data();
 
     int128 t = (block.timestamp - t_init).divu(t_final - t_init);
 
@@ -309,13 +309,13 @@ contract ForkEvolvingProteus is Test {
     emit log("utility");
     emit log_int(utility);
     emit log("a");
-    emit log_int(_evolvingProteus.a());
+    emit log_int(_evolvingProteus.config().a());
     emit log("b");
-    emit log_int(_evolvingProteus.b());
+    emit log_int(_evolvingProteus.config().b());
     emit log("p_min");
-    emit log_int(_evolvingProteus.p_min());
+    emit log_int(_evolvingProteus.config().p_min());
     emit log("p_max");
-    emit log_int(_evolvingProteus.p_max());
+    emit log_int(_evolvingProteus.config().p_max());
     emit log("t()");
     emit log_int(t);
     emit log("time % passed");
@@ -439,8 +439,8 @@ contract ForkEvolvingProteus is Test {
     emit log_int(utilityPerLpBeforeSwap);
     emit log_int(utilityPerLpAfterSwap);
     emit log("a & b values");
-    emit log_int(_evolvingProteus.a());
-    emit log_int(_evolvingProteus.b());
+    emit log_int(_evolvingProteus.config().a());
+    emit log_int(_evolvingProteus.config().b());
     
     // assertion checks for utility, utility per lp, user token balances, curve parameters
     uint256 xBalDiff = xBalanceAfterSwap - xBalanceBeforeSwap;
@@ -458,7 +458,7 @@ contract ForkEvolvingProteus is Test {
     assertWithinRounding(int256(_tokenABalDiff), int256(xBalDiff));
     assertGt(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
     assertLt(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
-    assertGt(_evolvingProteus.p_max(), _evolvingProteus.p_min());
+    assertGt(_evolvingProteus.config().p_max(), _evolvingProteus.config().p_min());
   }
 
   /**
@@ -527,8 +527,8 @@ contract ForkEvolvingProteus is Test {
     emit log_int(utilityPerLpBeforeSwap);
     emit log_int(utilityPerLpAfterSwap);
     emit log("a & b values");
-    emit log_int(_evolvingProteus.a());
-    emit log_int(_evolvingProteus.b());
+    emit log_int(_evolvingProteus.config().a());
+    emit log_int(_evolvingProteus.config().b());
 
     // assertion checks for utility, utility per lp, user token balances, curve parameters
     uint256 _tokenBBalDiff = _tokenBTraderBalanceBeforeSwap - _tokenBTraderBalanceAfterSwap;
@@ -540,7 +540,7 @@ contract ForkEvolvingProteus is Test {
     assertWithinRounding(int256(_tokenABalDiff), int256(xBalDiff));
     assertLt(_tokenBTraderBalanceAfterSwap, _tokenBTraderBalanceBeforeSwap);
     assertGt(_tokenATraderBalanceAfterSwap, _tokenATraderBalanceBeforeSwap);
-    assertGt(_evolvingProteus.p_max(), _evolvingProteus.p_min());
+    assertGt(_evolvingProteus.config().p_max(), _evolvingProteus.config().p_min());
   }
 
   /**
@@ -608,13 +608,13 @@ contract ForkEvolvingProteus is Test {
     emit log_int(utilityPerLpBeforeDeposit);
     emit log_int(utilityPerLpAfterDeposit);
     emit log("a & b values");
-    emit log_int(_evolvingProteus.a());
-    emit log_int(_evolvingProteus.b());
+    emit log_int(_evolvingProteus.config().a());
+    emit log_int(_evolvingProteus.config().b());
 
     // assertion checks for utility, utility per lp, curve parameters
     assertGt(utilityAfterDeposit, utilityBeforeDeposit);
     assertGt(utilityPerLpAfterDeposit, utilityPerLpBeforeDeposit);
-    assertGt(_evolvingProteus.p_max(), _evolvingProteus.p_min());
+    assertGt(_evolvingProteus.config().p_max(), _evolvingProteus.config().p_min());
   }
 
   /**
@@ -694,13 +694,13 @@ contract ForkEvolvingProteus is Test {
     emit log_int(utilityPerLpBeforeWithdraw);
     emit log_int(utilityPerLpAfterWithdraw);
     emit log("a & b values");
-    emit log_int(_evolvingProteus.a());
-    emit log_int(_evolvingProteus.b());
+    emit log_int(_evolvingProteus.config().a());
+    emit log_int(_evolvingProteus.config().b());
 
     // assertion checks for utility, utility per lp, curve parameters
     assertGt(utilityBeforeWithdraw, utilityAfterWithdraw);
     assertLt(utilityPerLpBeforeWithdraw, utilityPerLpAfterWithdraw);
-    assertGt(_evolvingProteus.p_max(), _evolvingProteus.p_min());
+    assertGt(_evolvingProteus.config().p_max(), _evolvingProteus.config().p_min());
   }
 
 
