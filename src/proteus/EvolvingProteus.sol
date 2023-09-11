@@ -589,6 +589,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 result = Math.mulDiv(uint256(uf), uint256(si), uint256(ui));
         require(result < INT_MAX);   
         int256 sf = int256(result);
+        require(sf >= MIN_BALANCE); 
 
         // apply fee to the computed amount
         computedAmount = _applyFeeByRounding(sf - si, feeDirection);
