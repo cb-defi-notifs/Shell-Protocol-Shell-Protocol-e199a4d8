@@ -32,6 +32,7 @@ contract EvolvingProteusProperties is Test {
     int256 constant BASE_FEE = 800;
     int256 constant FIXED_FEE = 10**9; 
     uint256 constant T_GRANULARITY = 10 seconds;
+    uint256 constant EVOLUTION_STARTS_IN =  1 hours; 
     uint256 constant T_DURATION = 12 hours;
     
     int128 py_init;
@@ -94,7 +95,7 @@ contract EvolvingProteusProperties is Test {
 
        duration = T_DURATION;
 
-       DUT = new EvolvingInstrumentedProteus(py_init, px_init, py_final, px_final, duration);
+       DUT = new EvolvingInstrumentedProteus(py_init, px_init, py_final, px_final, EVOLUTION_STARTS_IN, duration);
     }
 
     function testConfig() public {
@@ -130,12 +131,12 @@ contract EvolvingProteusProperties is Test {
 
         if (px_final_transformed >= py_final_transformed) {
           vm.expectRevert();
-          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, duration);
+          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_STARTS_IN, duration);
         }
 
         if (px_init_transformed >= py_init_transformed) {
           vm.expectRevert();
-          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, duration);
+          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_STARTS_IN, duration);
         }
     }
 

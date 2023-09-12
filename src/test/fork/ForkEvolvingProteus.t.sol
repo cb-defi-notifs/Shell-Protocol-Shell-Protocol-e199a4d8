@@ -61,6 +61,7 @@ contract ForkEvolvingProteus is Test {
   int256 constant BASE_FEE = 800; // baseFee refers to the % fee applied to the swap amount
   int256 constant FIXED_FEE = 10 ** 9; // fixedFee refers to the minimum fee applied to the swap amount
   uint256 constant T_DURATION =  3 days; 
+  uint256 constant EVOLUTION_STARTS_IN =  1 days; 
   int128 constant ABDK_ONE = int128(int256(1 << 64));
 
   uint256 py_init_val;
@@ -242,6 +243,7 @@ contract ForkEvolvingProteus is Test {
       px_init,
       py_final,
       px_final,
+      EVOLUTION_STARTS_IN,
       T_DURATION
     );
 
@@ -301,8 +303,6 @@ contract ForkEvolvingProteus is Test {
   function _logPoolParams() internal {
     (, , , , uint t_init, uint t_final) = _evolvingProteus.data();
 
-    int128 t = (block.timestamp - t_init).divu(t_final - t_init);
-
     (uint256 xBalanceAfterDeposit, uint256 yBalanceAfterDeposit) = _getBalances();
     int256 utility = _evolvingProteus.getUtility(int256(xBalanceAfterDeposit), int256(yBalanceAfterDeposit));
 
@@ -317,9 +317,7 @@ contract ForkEvolvingProteus is Test {
     emit log("p_max");
     emit log_int(_evolvingProteus.config().p_max());
     emit log("t()");
-    emit log_int(t);
-    emit log("time % passed");
-    emit log_uint((block.timestamp - t_init) * 100 / T_DURATION);
+    emit log_int(_evolvingProteus.config().t());
   }
 
   /**
