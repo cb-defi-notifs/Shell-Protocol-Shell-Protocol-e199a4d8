@@ -77,12 +77,6 @@ contract Config {
 
     /** 
      @notice 
-     duration after which curve evolution will start
-    */ 
-    uint256 immutable public curveEvolutionStartsAfter;
-
-    /** 
-     @notice 
      duration over which the curve will evolve
     */ 
     uint256 immutable public curveEvolutionDuration;
@@ -111,14 +105,13 @@ contract Config {
         t_init = block.timestamp + _curveEvolutionStartsAfter;
         t_final = block.timestamp + _curveEvolutionDuration;
         curveEvolutionDuration = _curveEvolutionDuration;
-        curveEvolutionStartsAfter = _curveEvolutionStartsAfter;
      }
 
     /**
        @notice Calculates the time that has passed since deployment
     */
     function elapsed() public view returns (uint256) {
-        if (block.timestamp >= t_init) return block.timestamp - t_init;
+        if (block.timestamp > t_init) return block.timestamp - t_init;
         else return 0;
     }
 
