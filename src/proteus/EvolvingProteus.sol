@@ -79,44 +79,48 @@ contract Config {
      @notice 
      duration over which the curve will evolve
     */ 
-    uint256 immutable public duration;
+    uint256 immutable public curveEvolutionDuration;
 
     /**
        @notice Calculates the equation parameters "a" & "b" described above & returns the config instance
        @param _py_init The initial price at the y axis
        @param _px_init The initial price at the x axis
-       @param _py_final The final price at the y axis
+       @param _py_final The final price at the y axis 
        @param _px_final The final price at the x axis
-       @param _duration duration over which the curve will evolve
+       @param _curveEvolutionStartTime curve evolution start time
+       @param _curveEvolutionDuration duration over which the curve will evolve
      */
      constructor(
         int128 _py_init,
         int128 _px_init,
         int128 _py_final,
         int128 _px_final,
-        uint256 _duration
+        uint256 _curveEvolutionStartTime,
+        uint256 _curveEvolutionDuration
      ) {
         py_init = _py_init;
         px_init = _px_init;
         py_final = _py_final;
         px_final = _px_final;
-        t_init = block.timestamp;
-        t_final = block.timestamp + _duration;
-        duration = _duration;
+        t_init = _curveEvolutionStartTime;
+        t_final = _curveEvolutionStartTime + _curveEvolutionDuration;
+        curveEvolutionDuration = _curveEvolutionDuration;
      }
 
     /**
        @notice Calculates the time that has passed since deployment
     */
     function elapsed() public view returns (uint256) {
-        return block.timestamp - t_init;
+        if (block.timestamp > t_init) return block.timestamp - t_init;
+        else return 0;
     }
 
     /**
        @notice Calculates the time as a percent of total duration
     */
     function t() public view returns (int128) {
-        return elapsed().divu(duration);
+        if (elapsed() == 0) return 0;
+        else return elapsed().divu(curveEvolutionDuration);
     }
 
     /**
@@ -124,6 +128,7 @@ contract Config {
     */
     function p_min() public view returns (int128) {
         if (t() > ABDK_ONE) return px_final;
+        else if (t() == 0) return px_init;
         else return px_init.mul(ABDK_ONE.sub(t())).add(px_final.mul(t()));
     }
 
@@ -132,6 +137,7 @@ contract Config {
     */
     function p_max() public view returns (int128) {
         if (t() > ABDK_ONE) return py_final;
+        else if (t() == 0) return py_init;
         else return py_init.mul(ABDK_ONE.sub(t())).add(py_final.mul(t()));
     }
 
@@ -242,6 +248,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     error MinimumAllowedPriceExceeded();
     error MaximumAllowedPriceExceeded();
     error MaximumAllowedPriceRatioExceeded();
+    error PoolNotActiveYet();
 
 
     //*********************************************************************//
@@ -253,16 +260,18 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
       @param px_init The initial price at the x axis
       @param py_final The final price at the y axis
       @param px_final The final price at the y axis
-      @param duration duration for which the curve will evolve
+      @param curveEvolutionStartTime curve evolution start time
+      @param curveEvolutionDuration duration for which the curve will evolve
     */
     constructor(
         int128 py_init,
         int128 px_init,
         int128 py_final,
         int128 px_final,
-        uint256 duration
+        uint256 curveEvolutionStartTime,
+        uint256 curveEvolutionDuration
     ) { 
-        if (duration == 0) revert();
+        if (curveEvolutionDuration == 0) revert();
 
         // price value checks
         if (py_init >= MAX_PRICE_VALUE || py_final >= MAX_PRICE_VALUE) revert MaximumAllowedPriceExceeded();
@@ -276,7 +285,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         if (py_init.div(py_init.sub(px_init)) > ABDKMath64x64.divu(MAX_PRICE_RATIO, 1)) revert MaximumAllowedPriceRatioExceeded();
         if (py_final.div(py_final.sub(px_final)) > ABDKMath64x64.divu(MAX_PRICE_RATIO, 1)) revert MaximumAllowedPriceRatioExceeded();
 
-        config = new Config(py_init, px_init, py_final, px_final, duration);
+        config = new Config(py_init, px_init, py_final, px_final, curveEvolutionStartTime, curveEvolutionDuration);
       }
 
 
@@ -292,6 +301,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 inputAmount,
         SpecifiedToken inputToken
     ) external view returns (uint256 outputAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
+
         // input amount validations against the current balance
         require(
             inputAmount < INT_MAX && xBalance < INT_MAX && yBalance < INT_MAX
@@ -332,6 +344,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 outputAmount,
         SpecifiedToken outputToken
     ) external view returns (uint256 inputAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
+
         // output amount validations against the current balance
         require(
             outputAmount < INT_MAX && xBalance < INT_MAX && yBalance < INT_MAX
@@ -374,6 +389,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 depositedAmount,
         SpecifiedToken depositedToken
     ) external view returns (uint256 mintedAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
+
         // deposit amount validations against the current balance
         require(
             depositedAmount < INT_MAX &&
@@ -415,6 +433,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 mintedAmount,
         SpecifiedToken depositedToken
     ) external view returns (uint256 depositedAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
+
         // lp amount validations against the current balance
         require(
             mintedAmount < INT_MAX &&
@@ -452,6 +473,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 withdrawnAmount,
         SpecifiedToken withdrawnToken
     ) external view returns (uint256 burnedAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
+
         // withdraw amount validations against the current balance
         require(
             withdrawnAmount < INT_MAX &&
@@ -489,6 +513,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 burnedAmount,
         SpecifiedToken withdrawnToken
     ) external view returns (uint256 withdrawnAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
+
         // lp amount validations against the current balance
         require(
             burnedAmount < INT_MAX &&
