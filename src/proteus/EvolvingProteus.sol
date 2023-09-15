@@ -248,6 +248,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
     error MinimumAllowedPriceExceeded();
     error MaximumAllowedPriceExceeded();
     error MaximumAllowedPriceRatioExceeded();
+    error PoolNotActiveYet();
 
 
     //*********************************************************************//
@@ -301,7 +302,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         SpecifiedToken inputToken
     ) external view returns (uint256 outputAmount) {
         // pool operations paused until curve evolution starts
-        if (config.elapsed() == 0) revert();
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
 
         // input amount validations against the current balance
         require(
@@ -344,7 +345,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         SpecifiedToken outputToken
     ) external view returns (uint256 inputAmount) {
         // pool operations paused until curve evolution starts
-        if (config.elapsed() == 0) revert();
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
 
         // output amount validations against the current balance
         require(
@@ -389,7 +390,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         SpecifiedToken depositedToken
     ) external view returns (uint256 mintedAmount) {
         // pool operations paused until curve evolution starts
-        if (config.elapsed() == 0) revert();
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
 
         // deposit amount validations against the current balance
         require(
@@ -433,7 +434,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         SpecifiedToken depositedToken
     ) external view returns (uint256 depositedAmount) {
         // pool operations paused until curve evolution starts
-        if (config.elapsed() == 0) revert();
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
 
         // lp amount validations against the current balance
         require(
@@ -473,7 +474,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         SpecifiedToken withdrawnToken
     ) external view returns (uint256 burnedAmount) {
         // pool operations paused until curve evolution starts
-        if (config.elapsed() == 0) revert();
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
 
         // withdraw amount validations against the current balance
         require(
@@ -513,7 +514,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         SpecifiedToken withdrawnToken
     ) external view returns (uint256 withdrawnAmount) {
         // pool operations paused until curve evolution starts
-        if (config.elapsed() == 0) revert();
+        if (config.elapsed() == 0) revert PoolNotActiveYet();
 
         // lp amount validations against the current balance
         require(
