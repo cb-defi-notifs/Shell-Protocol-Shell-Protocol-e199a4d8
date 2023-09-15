@@ -103,7 +103,7 @@ contract Config {
         py_final = _py_final;
         px_final = _px_final;
         t_init = _curveEvolutionStartTime;
-        t_final = block.timestamp + _curveEvolutionDuration;
+        t_final = _curveEvolutionStartTime + _curveEvolutionDuration;
         curveEvolutionDuration = _curveEvolutionDuration;
      }
 
@@ -271,7 +271,6 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 curveEvolutionDuration
     ) { 
         if (curveEvolutionDuration == 0) revert();
-        if (curveEvolutionStartTime >= block.timestamp + curveEvolutionDuration) revert();
 
         // price value checks
         if (py_init >= MAX_PRICE_VALUE || py_final >= MAX_PRICE_VALUE) revert MaximumAllowedPriceExceeded();
@@ -301,6 +300,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 inputAmount,
         SpecifiedToken inputToken
     ) external view returns (uint256 outputAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert();
+
         // input amount validations against the current balance
         require(
             inputAmount < INT_MAX && xBalance < INT_MAX && yBalance < INT_MAX
@@ -341,6 +343,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 outputAmount,
         SpecifiedToken outputToken
     ) external view returns (uint256 inputAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert();
+
         // output amount validations against the current balance
         require(
             outputAmount < INT_MAX && xBalance < INT_MAX && yBalance < INT_MAX
@@ -383,6 +388,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 depositedAmount,
         SpecifiedToken depositedToken
     ) external view returns (uint256 mintedAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert();
+
         // deposit amount validations against the current balance
         require(
             depositedAmount < INT_MAX &&
@@ -424,6 +432,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 mintedAmount,
         SpecifiedToken depositedToken
     ) external view returns (uint256 depositedAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert();
+
         // lp amount validations against the current balance
         require(
             mintedAmount < INT_MAX &&
@@ -461,6 +472,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 withdrawnAmount,
         SpecifiedToken withdrawnToken
     ) external view returns (uint256 burnedAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert();
+
         // withdraw amount validations against the current balance
         require(
             withdrawnAmount < INT_MAX &&
@@ -498,6 +512,9 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         uint256 burnedAmount,
         SpecifiedToken withdrawnToken
     ) external view returns (uint256 withdrawnAmount) {
+        // pool operations paused until curve evolution starts
+        if (config.elapsed() == 0) revert();
+
         // lp amount validations against the current balance
         require(
             burnedAmount < INT_MAX &&

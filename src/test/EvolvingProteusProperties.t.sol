@@ -31,8 +31,7 @@ contract EvolvingProteusProperties is Test {
     int256 public constant MAX_CHANGE_FACTOR = 10; // the maximum amount the utility or the balance of individual tokens can change in one transaction
     int256 constant BASE_FEE = 800;
     int256 constant FIXED_FEE = 10**9; 
-    uint256 constant T_GRANULARITY = 10 seconds;
-    uint256 constant EVOLUTION_STARTS_IN =  1 hours; 
+    uint256 EVOLUTION_STARTS_IN = block.timestamp + 1 hours; 
     uint256 constant T_DURATION = 12 hours;
     
     int128 py_init;
@@ -140,9 +139,18 @@ contract EvolvingProteusProperties is Test {
         }
     }
 
+    function test_reverts_when_trading_done_before_curve_evolution_starts() public {
+        SpecifiedToken inputToken = SpecifiedToken.X;
+        vm.expectRevert();
+        DUT.swapGivenInputAmount(1e18, 1e18, 1e16, inputToken);
+    }
+
     function testUtilityScaling(int256 x0, int256 y0) public {
         vm.assume(x0 >= int256(MIN_BALANCE) * 2);
         vm.assume(y0 >= int256(MIN_BALANCE) * 2);
+
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         try DUT.getUtility(x0, y0) returns (int256 u0) {
             emit log_named_int("u0", u0);
             try DUT.getUtility(x0 / 2, y0 / 2) returns (int256 u1) {
@@ -153,9 +161,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testUtilityScalingOverT(uint256 t_slice, int256 x0, int256 y0) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testUtilityScaling(x0, y0);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -169,6 +177,9 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0 >= int256(MIN_BALANCE) * 2);
         vm.assume(y0/x0 <= int256(MAX_BALANCE_AMOUNT_RATIO));
         vm.assume(x0/y0 <= int256(MAX_BALANCE_AMOUNT_RATIO));
+
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         try DUT.getUtility(x0, y0) returns (int256 u0) {
             if (point) {
                 try
@@ -195,9 +206,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testGetPointScalingOverT(uint256 t_slice, int256 x0, int256 y0, bool point) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testGetPointScaling(x0, y0, point);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -214,6 +225,9 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
+        
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         try DUT.swapGivenInputAmount(x0, y0, inputAmount, inputToken) returns (
             uint256 o0
         ) {
@@ -257,9 +271,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testSwapInputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 inputAmount, bool token) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testSwapInput(x0, y0, inputAmount, token);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -278,6 +292,9 @@ contract EvolvingProteusProperties is Test {
         SpecifiedToken outputToken = token
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
+        
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         try
             DUT.swapGivenOutputAmount(x0, y0, outputAmount, outputToken)
         returns (uint256 i0) {
@@ -340,9 +357,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testSwapOutputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 outputAmount, bool token) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testSwapOutput(x0, y0, outputAmount, token);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -363,6 +380,9 @@ contract EvolvingProteusProperties is Test {
         SpecifiedToken depositedToken = token
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
+        
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         try
             DUT.depositGivenOutputAmount(
                 x0,
@@ -404,9 +424,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testDepositOutputWithdrawInputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 mintedAmount, bool token) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testDepositOutputWithdrawInput(x0, y0, s0, mintedAmount, token);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -424,6 +444,9 @@ contract EvolvingProteusProperties is Test {
         vm.assume(depositedAmount >= MIN_OPERATING_AMOUNT);
         vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
+        
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         SpecifiedToken depositedToken = token
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
@@ -469,9 +492,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testDepositInputWithdrawOutputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 depositedAmount, bool token) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testDepositOutputWithdrawInput(x0, y0, s0, depositedAmount, token);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -491,6 +514,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         try DUT.swapGivenInputAmount(x0, y0, inputAmount, inputToken) returns (uint256 o0) {
 
             uint256 x1;
@@ -555,9 +580,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testSwapDWInputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 inputAmount, bool token) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testSwapDWInput(x0, y0, s0, inputAmount, token);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -576,6 +601,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken outputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
+
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
         
         try DUT.swapGivenOutputAmount(x0, y0, outputAmount, outputToken) returns (uint256 i0) {
 
@@ -635,9 +662,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testSwapDWOutputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 outputAmount, bool token) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testSwapDWOutput(x0, y0, s0, outputAmount, token);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -648,6 +675,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0 > MIN_BALANCE && y0 < MAX_BALANCE);
         vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
+
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
 
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         SpecifiedToken outputToken = token ? SpecifiedToken.Y : SpecifiedToken.X;
@@ -664,9 +693,9 @@ contract EvolvingProteusProperties is Test {
     }
     
     function testSmallInputOverT(uint256 t_slice, uint256 x0, uint256 y0, bool token) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testSmallInput(x0, y0, token);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -683,6 +712,9 @@ contract EvolvingProteusProperties is Test {
             int256 xf,
             int256 yf
         ) = assumes(x, y, delta, direction);
+                        
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         try DUT.getUtility(xi, yi) returns (int256 ui) {
             try DUT.getUtility(xf, yf) returns (
                 int256 uf
@@ -699,9 +731,9 @@ contract EvolvingProteusProperties is Test {
     }
     
     function testUtilityWithDeltaBalanceOverT(uint256 t_slice, uint256 x, uint256 y, int128 delta, bool direction) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testUtilityWithDeltaBalance(x, y, delta, direction);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -713,6 +745,9 @@ contract EvolvingProteusProperties is Test {
         bool direction
     ) public {
         (int256 xi, int256 yi) = assumeXY(x, y);
+        
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         try DUT.getUtility(xi, yi) returns (int256 ui) {
             int256 uf = ui + delta;
             vm.assume(
@@ -764,9 +799,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testGetPointWithDeltaUtilityOverT(uint256 t_slice, uint256 x, uint256 y, int128 delta, bool direction) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testGetPointWithDeltaUtility(x, y, delta, direction);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -783,6 +818,8 @@ contract EvolvingProteusProperties is Test {
             int256 xf,
             int256 yf
         ) = assumes(x, y, delta, direction);
+
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
 
         try DUT.getUtility(xi, yi) returns (int256 ui) {
             if (direction) {
@@ -831,9 +868,9 @@ contract EvolvingProteusProperties is Test {
     }
     
     function testGetPointWithDeltaBalanceOverT(uint256 t_slice, uint256 x, uint256 y, int128 delta, bool direction) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testGetPointWithDeltaBalance(x, y, delta, direction);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -841,6 +878,9 @@ contract EvolvingProteusProperties is Test {
     function testRecovery(uint256 x, uint256 y) public {
         vm.assume(x > type(uint64).max);
         vm.assume(y > type(uint64).max);
+
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+
         (int256 xi, int256 yi) = assumeXY(x, y);
         try DUT.getUtility(xi, yi) returns (
             int256 ui
@@ -870,9 +910,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testRecoveryOverT(uint256 t_slice, uint256 x, uint256 y) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testRecovery(x, y);
         assertGt(DUT.p_max(), DUT.p_min());
     }
@@ -904,9 +944,9 @@ contract EvolvingProteusProperties is Test {
     }
     
     function testSqrtOverT(uint256 t_slice, int256 a, int256 b) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testSqrt(a,b);
     }
     
@@ -916,6 +956,8 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0 > MIN_BALANCE && y0 < 1e27);
         vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
+
+        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
 
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         SpecifiedToken outputToken = token ? SpecifiedToken.Y : SpecifiedToken.X;
@@ -936,9 +978,9 @@ contract EvolvingProteusProperties is Test {
     }
 
     function testEdgeSwapsOverT(uint256 t_slice, uint256 x0, uint256 y0, bool token) public {
-        vm.assume(t_slice >= DUT.tInit()/ T_GRANULARITY && t_slice <= DUT.tFinal()/ T_GRANULARITY);
-        uint256 t = t_slice * T_GRANULARITY;
-        vm.assume(t >= DUT.tInit() && t <= DUT.tFinal());
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
         testEdgeSwaps(x0, y0, token);
     }
 
