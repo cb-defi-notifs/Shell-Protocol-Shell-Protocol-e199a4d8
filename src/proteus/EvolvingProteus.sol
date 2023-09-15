@@ -247,6 +247,8 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         int128 px_final,
         uint256 duration
     ) { 
+        if (duration == 0) revert();
+
         // price value checks
         if (py_init >= MAX_PRICE_VALUE || py_final >= MAX_PRICE_VALUE) revert MaximumAllowedPriceExceeded();
         if (px_init <= MIN_PRICE_VALUE || px_final <= MIN_PRICE_VALUE) revert MinimumAllowedPriceExceeded();
@@ -815,7 +817,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
 
     /**
      * @dev The pool's balances of the x reserve and y reserve tokens must be
-     *  greater than the MIN_BALANCE
+     *  greater than or equal to the MIN_BALANCE
      * @dev The pool's ratio of y to x must be within the interval
      *  [MIN_M, MAX_M)
      */
