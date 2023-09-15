@@ -61,7 +61,7 @@ contract ForkEvolvingProteus is Test {
   int256 constant BASE_FEE = 800; // baseFee refers to the % fee applied to the swap amount
   int256 constant FIXED_FEE = 10 ** 9; // fixedFee refers to the minimum fee applied to the swap amount
   uint256 constant T_DURATION =  3 days; 
-  uint256 EVOLUTION_STARTS_IN =  block.timestamp + 1 days; 
+  uint256 EVOLUTION_START_TIME =  block.timestamp + 1 days; 
   int128 constant ABDK_ONE = int128(int256(1 << 64));
 
   uint256 py_init_val;
@@ -243,7 +243,7 @@ contract ForkEvolvingProteus is Test {
       px_init,
       py_final,
       px_final,
-      EVOLUTION_STARTS_IN,
+      EVOLUTION_START_TIME,
       T_DURATION
     );
 
@@ -715,7 +715,7 @@ contract ForkEvolvingProteus is Test {
     _amount = bound(_amount, 20 ether, 100 ether);
     _time = bound(_time, 100, T_DURATION);
 
-    vm.warp(EVOLUTION_STARTS_IN + 1);
+    vm.warp(EVOLUTION_START_TIME + 1);
 
     if (tokenOwner.balance > _amount ) {
       // swap first from b -> a & a -> b
@@ -775,7 +775,7 @@ contract ForkEvolvingProteus is Test {
     _amount = bound(_amount, 50 ether, 50000 ether);
     _time = bound(_time, 100, T_DURATION);
 
-    vm.warp(EVOLUTION_STARTS_IN + 1);
+    vm.warp(EVOLUTION_START_TIME + 1);
 
     if ((IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount)) {
       // swap first from a -> b & b -> a
@@ -831,7 +831,7 @@ contract ForkEvolvingProteus is Test {
   function testMultipleSwaps(uint256 _amount) public {
     _amount = bound(_amount, 50 ether, 500 ether);
 
-    vm.warp(EVOLUTION_STARTS_IN + 1);
+    vm.warp(EVOLUTION_START_TIME + 1);
 
     if (tokenOwner.balance > _amount) {
       uint _tokenATraderBalanceBeforeSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
@@ -853,7 +853,7 @@ contract ForkEvolvingProteus is Test {
     _amount = bound(_amount, 50 ether, 500 ether);
     _time = bound(_time, 0, T_DURATION);
 
-    vm.warp(EVOLUTION_STARTS_IN + 1);
+    vm.warp(EVOLUTION_START_TIME + 1);
 
     if (tokenOwner.balance > _amount) {
     uint _tokenATraderBalanceBeforeSwap = IERC20(address(_tokenA)).balanceOf(tokenOwner);
@@ -886,7 +886,7 @@ contract ForkEvolvingProteus is Test {
   function testDeposit(uint256 _amount) public {
     _amount = bound(_amount, 5 ether, 500 ether);
 
-    vm.warp(EVOLUTION_STARTS_IN + 1);
+    vm.warp(EVOLUTION_START_TIME + 1);
 
     if (tokenOwner.balance > _amount) {
     _swapWithTokenBInputAmount(_amount);
@@ -905,7 +905,7 @@ contract ForkEvolvingProteus is Test {
     _amount = bound(_amount, 5 ether, 500 ether);
     _time = bound(_time, 0, T_DURATION);
 
-    vm.warp(EVOLUTION_STARTS_IN + 1);
+    vm.warp(EVOLUTION_START_TIME + 1);
 
     if (tokenOwner.balance > _amount) {
     _swapWithTokenBInputAmount(_amount);
@@ -928,7 +928,7 @@ contract ForkEvolvingProteus is Test {
   function testWithdraw(uint256 _amount) public {
     _amount = bound(_amount, 5 ether, 500 ether);
 
-    vm.warp(EVOLUTION_STARTS_IN + 1);
+    vm.warp(EVOLUTION_START_TIME + 1);
 
     if (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount) {
     _swapWithTokenAInputAmount(_amount);
@@ -948,7 +948,7 @@ contract ForkEvolvingProteus is Test {
     _amount = bound(_amount, 5 ether, 500 ether);
     _time = bound(_time, 0, T_DURATION);
 
-    vm.warp(EVOLUTION_STARTS_IN + 1);
+    vm.warp(EVOLUTION_START_TIME + 1);
 
     if (IERC20(address(_tokenA)).balanceOf(tokenOwner) > _amount) {
     _swapWithTokenAInputAmount(_amount);

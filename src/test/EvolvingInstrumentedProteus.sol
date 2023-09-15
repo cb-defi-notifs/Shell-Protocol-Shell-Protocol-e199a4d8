@@ -21,9 +21,9 @@ contract EvolvingInstrumentedProteus is EvolvingProteus {
         int128 px_init,
         int128 py_final,
         int128 px_final,
-        uint256 curveEvolutionStartsIn,
-        uint256 duration
-    ) EvolvingProteus(py_init, px_init, py_final, px_final, curveEvolutionStartsIn, duration) {}
+        uint256 curveEvolutionStartTime,
+        uint256 curveEvolutionDuration
+    ) EvolvingProteus(py_init, px_init, py_final, px_final, curveEvolutionStartTime, curveEvolutionDuration) {}
 
     function swap(
         bool roundDirection,

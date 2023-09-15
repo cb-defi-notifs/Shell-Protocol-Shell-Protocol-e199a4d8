@@ -31,14 +31,13 @@ contract EvolvingProteusProperties is Test {
     int256 public constant MAX_CHANGE_FACTOR = 10; // the maximum amount the utility or the balance of individual tokens can change in one transaction
     int256 constant BASE_FEE = 800;
     int256 constant FIXED_FEE = 10**9; 
-    uint256 EVOLUTION_STARTS_IN = block.timestamp + 1 hours; 
+    uint256 EVOLUTION_START_TIME = block.timestamp + 1 hours; 
     uint256 constant T_DURATION = 12 hours;
     
     int128 py_init;
     int128 px_init;
     int128 py_final;
     int128 px_final;
-    uint256 duration;
 
     uint256 py_init_val;
     uint256 px_init_val;
@@ -86,15 +85,12 @@ contract EvolvingProteusProperties is Test {
        py_final_val = 695100000000000000;
        px_final_val = 695100000000000;
 
-
        py_init = ABDKMath64x64.divu(py_init_val, 1e18);
        px_init = ABDKMath64x64.divu(px_init_val, 1e18);
        py_final = ABDKMath64x64.divu(py_final_val, 1e18);
        px_final = ABDKMath64x64.divu(px_final_val, 1e18);
 
-       duration = T_DURATION;
-
-       DUT = new EvolvingInstrumentedProteus(py_init, px_init, py_final, px_final, EVOLUTION_STARTS_IN, duration);
+       DUT = new EvolvingInstrumentedProteus(py_init, px_init, py_final, px_final, EVOLUTION_START_TIME, T_DURATION);
     }
 
     function testConfig() public {
@@ -130,12 +126,12 @@ contract EvolvingProteusProperties is Test {
 
         if (px_final_transformed >= py_final_transformed) {
           vm.expectRevert();
-          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_STARTS_IN, duration);
+          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_START_TIME, T_DURATION);
         }
 
         if (px_init_transformed >= py_init_transformed) {
           vm.expectRevert();
-          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_STARTS_IN, duration);
+          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_START_TIME, T_DURATION);
         }
     }
 
@@ -149,7 +145,7 @@ contract EvolvingProteusProperties is Test {
         vm.assume(x0 >= int256(MIN_BALANCE) * 2);
         vm.assume(y0 >= int256(MIN_BALANCE) * 2);
 
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         try DUT.getUtility(x0, y0) returns (int256 u0) {
             emit log_named_int("u0", u0);
@@ -178,7 +174,7 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0/x0 <= int256(MAX_BALANCE_AMOUNT_RATIO));
         vm.assume(x0/y0 <= int256(MAX_BALANCE_AMOUNT_RATIO));
 
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         try DUT.getUtility(x0, y0) returns (int256 u0) {
             if (point) {
@@ -226,7 +222,7 @@ contract EvolvingProteusProperties is Test {
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         try DUT.swapGivenInputAmount(x0, y0, inputAmount, inputToken) returns (
             uint256 o0
@@ -293,7 +289,7 @@ contract EvolvingProteusProperties is Test {
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
         
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         try
             DUT.swapGivenOutputAmount(x0, y0, outputAmount, outputToken)
@@ -381,7 +377,7 @@ contract EvolvingProteusProperties is Test {
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
         
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         try
             DUT.depositGivenOutputAmount(
@@ -445,7 +441,7 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         SpecifiedToken depositedToken = token
             ? SpecifiedToken.X
@@ -514,7 +510,7 @@ contract EvolvingProteusProperties is Test {
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         try DUT.swapGivenInputAmount(x0, y0, inputAmount, inputToken) returns (uint256 o0) {
 
@@ -602,7 +598,7 @@ contract EvolvingProteusProperties is Test {
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken outputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
 
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
         
         try DUT.swapGivenOutputAmount(x0, y0, outputAmount, outputToken) returns (uint256 i0) {
 
@@ -676,7 +672,7 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
 
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         SpecifiedToken outputToken = token ? SpecifiedToken.Y : SpecifiedToken.X;
@@ -713,7 +709,7 @@ contract EvolvingProteusProperties is Test {
             int256 yf
         ) = assumes(x, y, delta, direction);
                         
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         try DUT.getUtility(xi, yi) returns (int256 ui) {
             try DUT.getUtility(xf, yf) returns (
@@ -746,7 +742,7 @@ contract EvolvingProteusProperties is Test {
     ) public {
         (int256 xi, int256 yi) = assumeXY(x, y);
         
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         try DUT.getUtility(xi, yi) returns (int256 ui) {
             int256 uf = ui + delta;
@@ -819,7 +815,7 @@ contract EvolvingProteusProperties is Test {
             int256 yf
         ) = assumes(x, y, delta, direction);
 
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         try DUT.getUtility(xi, yi) returns (int256 ui) {
             if (direction) {
@@ -879,7 +875,7 @@ contract EvolvingProteusProperties is Test {
         vm.assume(x > type(uint64).max);
         vm.assume(y > type(uint64).max);
 
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         (int256 xi, int256 yi) = assumeXY(x, y);
         try DUT.getUtility(xi, yi) returns (
@@ -957,7 +953,7 @@ contract EvolvingProteusProperties is Test {
         vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
         vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
 
-        vm.warp(block.timestamp + EVOLUTION_STARTS_IN + 1);
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         SpecifiedToken outputToken = token ? SpecifiedToken.Y : SpecifiedToken.X;
