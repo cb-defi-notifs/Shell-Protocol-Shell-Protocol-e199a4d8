@@ -87,7 +87,7 @@ contract Config {
        @param _px_init The initial price at the x axis
        @param _py_final The final price at the y axis 
        @param _px_final The final price at the x axis
-       @param _curveEvolutionStartsAfter duration after which curve evolution will start
+       @param _curveEvolutionStartTime curve evolution start time
        @param _curveEvolutionDuration duration over which the curve will evolve
      */
      constructor(
@@ -95,14 +95,14 @@ contract Config {
         int128 _px_init,
         int128 _py_final,
         int128 _px_final,
-        uint256 _curveEvolutionStartsAfter,
+        uint256 _curveEvolutionStartTime,
         uint256 _curveEvolutionDuration
      ) {
         py_init = _py_init;
         px_init = _px_init;
         py_final = _py_final;
         px_final = _px_final;
-        t_init = block.timestamp + _curveEvolutionStartsAfter;
+        t_init = _curveEvolutionStartTime;
         t_final = block.timestamp + _curveEvolutionDuration;
         curveEvolutionDuration = _curveEvolutionDuration;
      }
@@ -259,7 +259,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
       @param px_init The initial price at the x axis
       @param py_final The final price at the y axis
       @param px_final The final price at the y axis
-      @param curveEvolutionStartsAfter duration after which curve evolution will start
+      @param curveEvolutionStartTime curve evolution start time
       @param curveEvolutionDuration duration for which the curve will evolve
     */
     constructor(
@@ -267,11 +267,11 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         int128 px_init,
         int128 py_final,
         int128 px_final,
-        uint256 curveEvolutionStartsAfter,
+        uint256 curveEvolutionStartTime,
         uint256 curveEvolutionDuration
     ) { 
         if (curveEvolutionDuration == 0) revert();
-        if (curveEvolutionStartsAfter >= curveEvolutionDuration) revert();
+        if (curveEvolutionStartTime >= block.timestamp + curveEvolutionDuration) revert();
 
         // price value checks
         if (py_init >= MAX_PRICE_VALUE || py_final >= MAX_PRICE_VALUE) revert MaximumAllowedPriceExceeded();
@@ -285,7 +285,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         if (py_init.div(py_init.sub(px_init)) > ABDKMath64x64.divu(MAX_PRICE_RATIO, 1)) revert MaximumAllowedPriceRatioExceeded();
         if (py_final.div(py_final.sub(px_final)) > ABDKMath64x64.divu(MAX_PRICE_RATIO, 1)) revert MaximumAllowedPriceRatioExceeded();
 
-        config = new Config(py_init, px_init, py_final, px_final, curveEvolutionStartsAfter, curveEvolutionDuration);
+        config = new Config(py_init, px_init, py_final, px_final, curveEvolutionStartTime, curveEvolutionDuration);
       }
 
 
