@@ -247,6 +247,8 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         int128 px_final,
         uint256 duration
     ) { 
+        if (duration == 0) revert();
+
         // price value checks
         if (py_init >= MAX_PRICE_VALUE || py_final >= MAX_PRICE_VALUE) revert MaximumAllowedPriceExceeded();
         if (px_init <= MIN_PRICE_VALUE || px_final <= MIN_PRICE_VALUE) revert MinimumAllowedPriceExceeded();
