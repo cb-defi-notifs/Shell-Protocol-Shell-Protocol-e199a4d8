@@ -9,7 +9,7 @@ import "abdk-libraries-solidity/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {EvolvingInstrumentedProteus} from "./EvolvingInstrumentedProteus.sol";
-import {EvolvingProteus, Config, LibConfig} from "../proteus/EvolvingProteus.sol";
+import {EvolvingProteus} from "../proteus/EvolvingProteus.sol";
 import {SpecifiedToken} from "../proteus/ILiquidityPoolImplementation.sol";
 
 
@@ -23,7 +23,6 @@ contract EvolvingProteusProperties is Test {
     using ABDKMath64x64 for int128;
     using ABDKMath64x64 for uint256;
     using ABDKMath64x64 for int256;
-    using LibConfig for Config;
 
     uint256 public constant MAX_BALANCE = uint256(type(int256).max); // (2^255/10^18) // a big number
     uint256 public constant MIN_BALANCE = 10**12; //10**14; //(10^14/10^18  = 10^-4) // 0.0001
