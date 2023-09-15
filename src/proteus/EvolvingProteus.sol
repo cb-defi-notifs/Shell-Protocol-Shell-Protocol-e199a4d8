@@ -839,12 +839,12 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
 
     /**
      * @dev The pool's balances of the x reserve and y reserve tokens must be
-     *  greater than the MIN_BALANCE
+     *  greater than or equal to the MIN_BALANCE
      * @dev The pool's ratio of y to x must be within the interval
      *  [MIN_M, MAX_M)
      */
     function _checkBalances(int256 x, int256 y) private pure {
-        if (x <= MIN_BALANCE || y <= MIN_BALANCE) revert BalanceError(x,y);
+        if (x < MIN_BALANCE || y < MIN_BALANCE) revert BalanceError(x,y);
         int128 finalBalanceRatio = y.divi(x);
         if (finalBalanceRatio < MIN_M) revert BoundaryError(x,y);
         else if (MAX_M <= finalBalanceRatio) revert BoundaryError(x,y);
