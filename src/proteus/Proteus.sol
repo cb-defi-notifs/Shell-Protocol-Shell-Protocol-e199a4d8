@@ -137,6 +137,12 @@ contract Proteus is ILiquidityPoolImplementation, Slices {
                 yBalance < INT_MAX &&
                 totalSupply < INT_MAX
         );
+
+        _checkAmountWithBalance(
+            (depositedToken == SpecifiedToken.X) ? xBalance : yBalance,
+            depositedAmount
+        );
+
         int256 result = _reserveTokenSpecified(
             depositedToken,
             int256(depositedAmount),
@@ -380,6 +386,13 @@ contract Proteus is ILiquidityPoolImplementation, Slices {
         require(sf >= MIN_BALANCE); 
 
         computedAmount = _applyFeeByRounding(sf - si, feeDirection);
+
+        // reserve balances check based on the specified amount
+        if (specifiedToken == SpecifiedToken.X) {
+            _checkBalances(xi + specifiedAmount, yf);
+        } else {
+            _checkBalances(xf, yi + specifiedAmount);
+        }
     }
 
     /**
