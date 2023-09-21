@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../../ocean/Interactions.sol";
 import "../../ocean/Ocean.sol";
 import "../../mocks/ERC20MintsToDeployer.sol";
-import "..//EvolvingInstrumentedProteus.sol";
+import "..//InstrumentedEvolvingProteus.sol";
 import "../../proteus/LiquidityPoolProxy.sol";
 
 /**
@@ -39,7 +39,7 @@ import "../../proteus/LiquidityPoolProxy.sol";
       - when x is swapped at t0 user x bal after swap <= user x bal before swap & pool x bal before swap <= pool x bal after swap
       - when y is swapped at t0 user y bal after swap <= user y bal before swap & pool y bal before swap <= pool y bal after swap
 */
-contract ForkEvolvingProteus is Test {
+contract EvolvingProteusFork is Test {
   using ABDKMath64x64 for uint256;
   using ABDKMath64x64 for int256;
   using ABDKMath64x64 for int128;
@@ -47,7 +47,7 @@ contract ForkEvolvingProteus is Test {
   Ocean _ocean = Ocean(0xC32eB36f886F638fffD836DF44C124074cFe3584);
   ERC20MintsToDeployer _tokenA;
   address tokenOwner = 0x9b64203878F24eB0CDF55c8c6fA7D08Ba0cF77E5;
-  EvolvingInstrumentedProteus _evolvingProteus;
+  InstrumentedEvolvingProteus _evolvingProteus;
   LiquidityPoolProxy _pool;
 
   uint256 _tokenA_OceanId; // deploying a new token
@@ -238,7 +238,7 @@ contract ForkEvolvingProteus is Test {
     int128 px_final = ABDKMath64x64.divu(px_final_val, 1e18);
 
     vm.prank(tokenOwner);
-    _evolvingProteus = new EvolvingInstrumentedProteus(
+    _evolvingProteus = new InstrumentedEvolvingProteus(
       py_init,
       px_init,
       py_final,
@@ -301,7 +301,6 @@ contract ForkEvolvingProteus is Test {
     Logs all the curve equation related parameters
   */
   function _logPoolParams() internal {
-    (, , , , uint t_init, uint t_final,) = _evolvingProteus.params();
 
     (uint256 xBalanceAfterDeposit, uint256 yBalanceAfterDeposit) = _getBalances();
     int256 utility = _evolvingProteus.getUtility(int256(xBalanceAfterDeposit), int256(yBalanceAfterDeposit));

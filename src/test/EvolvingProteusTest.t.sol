@@ -8,7 +8,7 @@ import "forge-std/Test.sol";
 import "abdk-libraries-solidity/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {EvolvingInstrumentedProteus} from "./EvolvingInstrumentedProteus.sol";
+import {InstrumentedEvolvingProteus} from "./InstrumentedEvolvingProteus.sol";
 import {EvolvingProteus} from "../proteus/EvolvingProteus.sol";
 import {SpecifiedToken} from "../proteus/ILiquidityPoolImplementation.sol";
 
@@ -19,7 +19,7 @@ import {SpecifiedToken} from "../proteus/ILiquidityPoolImplementation.sol";
      - Try/catch statments are used to call the internal methods of Proteus since there is typically input validation when called from the Ocean
      - for some price , swap aount ranges assertWithinRounding might revert with difference a bit much that is expected to be there
 */
-contract EvolvingProteusProperties is Test {
+contract EvolvingProteusTest is Test {
     using ABDKMath64x64 for int128;
     using ABDKMath64x64 for uint256;
     using ABDKMath64x64 for int256;
@@ -45,7 +45,7 @@ contract EvolvingProteusProperties is Test {
     uint256 px_final_val;
 
     // @dev DUT: Design Under Test
-    EvolvingInstrumentedProteus DUT;
+    InstrumentedEvolvingProteus DUT;
 
     function setUp() public {
        // some price ranges we have tested with
@@ -90,34 +90,34 @@ contract EvolvingProteusProperties is Test {
        py_final = ABDKMath64x64.divu(py_final_val, 1e18);
        px_final = ABDKMath64x64.divu(px_final_val, 1e18);
 
-       DUT = new EvolvingInstrumentedProteus(py_init, px_init, py_final, px_final, EVOLUTION_START_TIME, T_DURATION);
+       DUT = new InstrumentedEvolvingProteus(py_init, px_init, py_final, px_final, EVOLUTION_START_TIME, T_DURATION);
     }
 
     function testConfig() public {
-       (int128 py_init, int128 px_init, int128 py_final, int128 px_final) = DUT.printConfig();
-       emit log_named_int("py_init", py_init);
-       emit log_named_int("px_init", px_init);
-       emit log_named_int("py_final", py_final);
-       emit log_named_int("px_final", px_final);
+       (int128 _py_init, int128 _px_init, int128 _py_final, int128 _px_final) = DUT.printConfig();
+       emit log_named_int("py_init", _py_init);
+       emit log_named_int("px_init", _px_init);
+       emit log_named_int("py_final", _py_final);
+       emit log_named_int("px_final", _px_final);
     }
 
     function test_deployment_reverts_with_incorrect_params(
-      uint128 py_init,
-      uint128 px_init,
-      uint128 py_final,
-      uint128 px_final) 
+      uint128 _py_init,
+      uint128 _px_init,
+      uint128 _py_final,
+      uint128 _px_final) 
       public {
         
         // Assume prices are between 0 and 1
-        vm.assume(py_init > 0 && py_init <= 1e18);
-        vm.assume(px_init > 0 && px_init <= 1e18);
-        vm.assume(py_final > 0 && py_final <= 1e18);
-        vm.assume(px_final > 0 && px_final <= 1e18);
+        vm.assume(_py_init > 0 && _py_init <= 1e18);
+        vm.assume(_px_init > 0 && _px_init <= 1e18);
+        vm.assume(_py_final > 0 && _py_final <= 1e18);
+        vm.assume(_px_final > 0 && _px_final <= 1e18);
        
-        int128 py_init_transformed = ABDKMath64x64.divu(py_init,1e18);
-        int128 px_init_transformed = ABDKMath64x64.divu(px_init,1e18);
-        int128 py_final_transformed = ABDKMath64x64.divu(py_final,1e18);
-        int128 px_final_transformed = ABDKMath64x64.divu(px_final,1e18);
+        int128 py_init_transformed = ABDKMath64x64.divu(_py_init,1e18);
+        int128 px_init_transformed = ABDKMath64x64.divu(_px_init,1e18);
+        int128 py_final_transformed = ABDKMath64x64.divu(_py_final,1e18);
+        int128 px_final_transformed = ABDKMath64x64.divu(_px_final,1e18);
         emit log_int(py_init_transformed);
         emit log_int(px_init_transformed);
         emit log_int(py_final_transformed);
@@ -126,12 +126,12 @@ contract EvolvingProteusProperties is Test {
 
         if (px_final_transformed >= py_final_transformed) {
           vm.expectRevert();
-          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_START_TIME, T_DURATION);
+          DUT = new InstrumentedEvolvingProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_START_TIME, T_DURATION);
         }
 
         if (px_init_transformed >= py_init_transformed) {
           vm.expectRevert();
-          DUT = new EvolvingInstrumentedProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_START_TIME, T_DURATION);
+          DUT = new InstrumentedEvolvingProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_START_TIME, T_DURATION);
         }
     }
 

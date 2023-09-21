@@ -12,7 +12,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 import "./InstrumentedProteus.sol";
 import "../proteus/Proteus.sol";
 
-contract ProteusProperties is DSTest {
+contract ProteusTest is DSTest {
     using ABDKMath64x64 for int128;
     using ABDKMath64x64 for uint256;
     using ABDKMath64x64 for int256;

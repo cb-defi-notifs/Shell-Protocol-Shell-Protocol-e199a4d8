@@ -10,7 +10,7 @@ import {SpecifiedToken} from "../proteus/ILiquidityPoolImplementation.sol";
 /**
   The test helper contract used for calling some internal methods in the evolving proteus contract & viewing some curve equation parameters
 */
-contract EvolvingInstrumentedProteus is EvolvingProteus {
+contract InstrumentedEvolvingProteus is EvolvingProteus {
     using ABDKMath64x64 for int128;
     using ABDKMath64x64 for int256;
 
