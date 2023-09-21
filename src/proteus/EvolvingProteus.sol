@@ -742,14 +742,14 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         int256 y
     ) internal view returns (int256 utility) {
 
-        int128 a = a(); //these are abdk numbers representing the a and b values
-        int128 b = b(); 
+        int128 _a = a(); //these are abdk numbers representing the a and b values
+        int128 _b = b(); 
 
         int128 two = ABDKMath64x64.divu(uint256(2 * MULTIPLIER), uint256(MULTIPLIER));
         int128 one = ABDKMath64x64.divu(uint256(MULTIPLIER), uint256(MULTIPLIER));
 
-        int128 aQuad = (a.mul(b).sub(one));
-        int256 bQuad = (a.muli(y) + b.muli(x));
+        int128 aQuad = (_a.mul(_b).sub(one));
+        int256 bQuad = (_a.muli(y) + _b.muli(x));
         int256 cQuad = x * y;
 
         int256 disc = int256(Math.sqrt(uint256((bQuad**2 - (aQuad.muli(cQuad)*4)))));
@@ -763,7 +763,7 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         // int256 r0 = (-bQuad*MULTIPLIER + disc*MULTIPLIER) / aQuad.mul(two).muli(MULTIPLIER);
         // int256 r1 = (-bQuad*MULTIPLIER - disc*MULTIPLIER) / aQuad.mul(two).muli(MULTIPLIER);
 
-        if(a < 0 && b < 0) utility = (r0 > r1) ? r1 : r0;
+        if(_a < 0 && _b < 0) utility = (r0 > r1) ? r1 : r0;
         else utility = (r0 > r1) ? r0 : r1;
         
         if (utility < 0) revert CurveError(utility);
@@ -786,11 +786,11 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         int256 x,
         int256 utility
     ) internal view returns (int256 x0, int256 y0) {
-        int128 a = a();
-        int128 b = b();
+        int128 _a = a();
+        int128 _b = b();
 
-        int256 a_convert = a.muli(MULTIPLIER);
-        int256 b_convert = b.muli(MULTIPLIER);
+        int256 a_convert = _a.muli(MULTIPLIER);
+        int256 b_convert = _b.muli(MULTIPLIER);
         x0 = x;
         
         int256 f_0 = ((( x0  * MULTIPLIER ) / utility) + a_convert);
@@ -817,11 +817,11 @@ contract EvolvingProteus is ILiquidityPoolImplementation {
         int256 y,
         int256 utility
     ) internal view returns (int256 x0, int256 y0) {
-        int128 a = a();
-        int128 b = b();
+        int128 _a = a();
+        int128 _b = b();
 
-        int256 a_convert = a.muli(MULTIPLIER);
-        int256 b_convert = b.muli(MULTIPLIER);
+        int256 a_convert = _a.muli(MULTIPLIER);
+        int256 b_convert = _b.muli(MULTIPLIER);
         y0 = y;
 
         int256 f_0 = (( y0  * MULTIPLIER ) / utility) + b_convert;
