@@ -3,122 +3,165 @@
 
 pragma solidity 0.8.10;
 
-import "ds-test/test.sol";
-import "forge-std/Vm.sol";
 
+import "forge-std/Test.sol";
 import "abdk-libraries-solidity/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-import "./InstrumentedProteus.sol";
-import "../proteus/Proteus.sol";
+import {InstrumentedEvolvingProteus} from "./InstrumentedEvolvingProteus.sol";
+import {EvolvingProteus} from "../proteus/EvolvingProteus.sol";
+import {SpecifiedToken} from "../proteus/ILiquidityPoolImplementation.sol";
 
-contract ProteusProperties is DSTest {
+
+/**
+   Unit Test Suite for Evolving Proteus. This test suite includes testing and asserting all the computational variables in the contract
+   Note 
+     - Try/catch statments are used to call the internal methods of Proteus since there is typically input validation when called from the Ocean
+     - for some price , swap aount ranges assertWithinRounding might revert with difference a bit much that is expected to be there
+*/
+contract EvolvingProteusTest is Test {
     using ABDKMath64x64 for int128;
     using ABDKMath64x64 for uint256;
     using ABDKMath64x64 for int256;
 
-    Vm public constant vm = Vm(HEVM_ADDRESS);
+    uint256 public constant MAX_BALANCE = uint256(type(int256).max); // (2^255/10^18) // a big number
+    uint256 public constant MIN_BALANCE = 10**12; //10**14; //(10^14/10^18  = 10^-4) // 0.0001
+    uint256 public constant MIN_OPERATING_AMOUNT = 2 * 10**8; //(2 * 10^-10) // the min amount you can specify
+    uint256 private constant MAX_BALANCE_AMOUNT_RATIO = 10**11; // the maximum difference between the x and y  balances
+    int256 public constant MAX_CHANGE_FACTOR = 10; // the maximum amount the utility or the balance of individual tokens can change in one transaction
+    int256 constant BASE_FEE = 800;
+    int256 constant FIXED_FEE = 10**9; 
+    uint256 EVOLUTION_START_TIME = block.timestamp + 1 hours; 
+    uint256 constant T_DURATION = 12 hours;
+    
+    int128 py_init;
+    int128 px_init;
+    int128 py_final;
+    int128 px_final;
 
-    uint256 public constant MAX_BALANCE = uint256(type(int256).max);
-    uint256 public constant MIN_BALANCE = 10**12;
-    uint256 public constant MIN_OPERATING_AMOUNT = 2 * 10**8;
-    uint256 private constant MAX_BALANCE_AMOUNT_RATIO = 10**11;
-    int256 public constant MAX_CHANGE_FACTOR = 10;
-    uint8 public constant PERCENT_DECIMALS = 14;
-    int256 constant BASE_FEE = 4000;
-    int256 constant FIXED_FEE = 10**9;
-    int128 MAX_M = 0x5f5e1000000000000000000;
-    int128 MIN_M = 0x00000000000002af31dc461;
-
-    int128[] ms;
-    int128[] _as;
-    int128[] bs;
-    int128[] ks;
+    uint256 py_init_val;
+    uint256 px_init_val;
+    uint256 py_final_val;
+    uint256 px_final_val;
 
     // @dev DUT: Design Under Test
-    InstrumentedProteus DUT;
+    InstrumentedEvolvingProteus DUT;
 
     function setUp() public {
-        ms = [
-            
-            ABDKMath64x64.divu(25640378140000000, 1e18),
-            ABDKMath64x64.divu(52631955610000000, 1e18),
-            ABDKMath64x64.divu(176486037900000000, 1e18),
-            ABDKMath64x64.divu(333371587500000000, 1e18),
-            ABDKMath64x64.divu(538520049000000000, 1e18),
-            ABDKMath64x64.divu(818226110700000000, 1e18),
-            ABDKMath64x64.divu(1222303769000000000, 1e18),
-            ABDKMath64x64.divu(1857512075000000000, 1e18),
-            ABDKMath64x64.divu(3000976136000000000, 1e18),
-            ABDKMath64x64.divu(5669257622000000000, 1e18),
-            ABDKMath64x64.divu(19011780730000000000, 1e18),
-            ABDKMath64x64.divu(39026042580000000000, 1e18)
-        ];
+       // some price ranges we have tested with
+       // x constant y increases
+       // py_init_val = 6951000000000000;
+       // px_init_val = 69510000000000;
+       // py_final_val = 695100000000000000;
+       // px_final_val = 69510000000000;
 
+       // x constant y decreases
+       // py_init_val = 6951000000000000;
+       // px_init_val = 69510000000000;
+       // py_final_val = 695100000000000;
+       // px_final_val = 69510000000000;
 
-        _as = [
-            ABDKMath64x64.divu(37864635818100000000, 1e18).neg(),
-            ABDKMath64x64.divu(994494574800000000, 1e18),
-            ABDKMath64x64.divu(996568165800000000, 1e18),
-            ABDKMath64x64.divu(998949728700000000, 1e18),
-            ABDKMath64x64.divu(999003351700000000, 1e18),
-            ABDKMath64x64.divu(999065034500000000, 1e18),
-            ABDKMath64x64.divu(998979292200000000, 1e18),
-            ABDKMath64x64.divu(999069324400000000, 1e18),
-            ABDKMath64x64.divu(999115634600000000, 1e18),
-            ABDKMath64x64.divu(998897196900000000, 1e18),
-            ABDKMath64x64.divu(998645883200000000, 1e18),
-            ABDKMath64x64.divu(998580698800000000, 1e18),
-            int128(0)
-        ];
+       // y constant x decreases
+       // py_init_val = 6951000000000000;
+       // px_init_val = 69510000000000;
+       // py_final_val = 6951000000000000;
+       // px_final_val = 6951000000000;
+    
+       // y constant x increases
+       // py_init_val = 6951000000000000;
+       // px_init_val = 695100000000;
+       // py_final_val = 6951000000000000;
+       // px_final_val = 69510000000000;
 
-        bs = [
-            int128(0),
-            ABDKMath64x64.divu(999132540000000000, 1e18),
-            ABDKMath64x64.divu(999241988500000000, 1e18),
-            ABDKMath64x64.divu(999663642100000000, 1e18),
-            ABDKMath64x64.divu(999681583100000000, 1e18),
-            ABDKMath64x64.divu(999714939200000000, 1e18),
-            ABDKMath64x64.divu(999644436200000000, 1e18),
-            ABDKMath64x64.divu(999755147900000000, 1e18),
-            ABDKMath64x64.divu(999841839000000000, 1e18),
-            ABDKMath64x64.divu(999179148000000000, 1e18),
-            ABDKMath64x64.divu(997728241700000000, 1e18),
-            ABDKMath64x64.divu(996418148900000000, 1e18),
-            ABDKMath64x64.divu(37974234723700000000, 1e18).neg()
-        ];
+       // x & y both decrease
+       // py_init_val = 6951000000000000;
+       // px_init_val = 69510000000000;
+       // py_final_val = 695100000000000;
+       // px_final_val = 6951000000000;
+
+       // x & y both increase
+       py_init_val = 6951000000000000;
+       px_init_val = 69510000000000;
+       py_final_val = 695100000000000000;
+       px_final_val = 695100000000000;
+
+       py_init = ABDKMath64x64.divu(py_init_val, 1e18);
+       px_init = ABDKMath64x64.divu(px_init_val, 1e18);
+       py_final = ABDKMath64x64.divu(py_final_val, 1e18);
+       px_final = ABDKMath64x64.divu(px_final_val, 1e18);
+
+       DUT = new InstrumentedEvolvingProteus(py_init, px_init, py_final, px_final, EVOLUTION_START_TIME, T_DURATION);
+    }
+
+    function testConfig() public {
+       (int128 _py_init, int128 _px_init, int128 _py_final, int128 _px_final) = DUT.printConfig();
+       emit log_named_int("py_init", _py_init);
+       emit log_named_int("px_init", _px_init);
+       emit log_named_int("py_final", _py_final);
+       emit log_named_int("px_final", _px_final);
+    }
+
+    function test_deployment_reverts_with_incorrect_params(
+      uint128 _py_init,
+      uint128 _px_init,
+      uint128 _py_final,
+      uint128 _px_final) 
+      public {
         
-        ks = [
-            ABDKMath64x64.divu(1000000000000000000, 1e18),
-            ABDKMath64x64.divu(6254859434000000000000, 1e18),
-            ABDKMath64x64.divu(9513601567000000000000, 1e18),
-            ABDKMath64x64.divu(28746117460000000000000, 1e18),
-            ABDKMath64x64.divu(30310444480000000000000, 1e18),
-            ABDKMath64x64.divu(32671558110000000000000, 1e18),
-            ABDKMath64x64.divu(28962612650000000000000, 1e18),
-            ABDKMath64x64.divu(33907851000000000000000, 1e18),
-            ABDKMath64x64.divu(38232547770000000000000, 1e18),
-            ABDKMath64x64.divu(20723726300000000000000, 1e18),
-            ABDKMath64x64.divu(10996470220000000000000, 1e18),
-            ABDKMath64x64.divu(7973373974000000000000, 1e18),
-            ABDKMath64x64.divu(997878522800000000, 1e18)
-        ];
+        // Assume prices are between 0 and 1
+        vm.assume(_py_init > 0 && _py_init <= 1e18);
+        vm.assume(_px_init > 0 && _px_init <= 1e18);
+        vm.assume(_py_final > 0 && _py_final <= 1e18);
+        vm.assume(_px_final > 0 && _px_final <= 1e18);
+       
+        int128 py_init_transformed = ABDKMath64x64.divu(_py_init,1e18);
+        int128 px_init_transformed = ABDKMath64x64.divu(_px_init,1e18);
+        int128 py_final_transformed = ABDKMath64x64.divu(_py_final,1e18);
+        int128 px_final_transformed = ABDKMath64x64.divu(_px_final,1e18);
+        emit log_int(py_init_transformed);
+        emit log_int(px_init_transformed);
+        emit log_int(py_final_transformed);
+        emit log_int(px_final_transformed);
 
-        DUT = new InstrumentedProteus(ms, _as, bs, ks);
+
+        if (px_final_transformed >= py_final_transformed) {
+          vm.expectRevert();
+          DUT = new InstrumentedEvolvingProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_START_TIME, T_DURATION);
+        }
+
+        if (px_init_transformed >= py_init_transformed) {
+          vm.expectRevert();
+          DUT = new InstrumentedEvolvingProteus(py_init_transformed, px_init_transformed, py_final_transformed, px_final_transformed, EVOLUTION_START_TIME, T_DURATION);
+        }
+    }
+
+    function test_reverts_when_trading_done_before_curve_evolution_starts() public {
+        SpecifiedToken inputToken = SpecifiedToken.X;
+        vm.expectRevert();
+        DUT.swapGivenInputAmount(1e18, 1e18, 1e16, inputToken);
     }
 
     function testUtilityScaling(int256 x0, int256 y0) public {
         vm.assume(x0 >= int256(MIN_BALANCE) * 2);
         vm.assume(y0 >= int256(MIN_BALANCE) * 2);
-        checkBoundary(x0, y0);
-        uint256 i = DUT.findSlice(ms, x0, y0);
-        try DUT.getUtility(x0, y0, _as[i], bs[i], ks[i]) returns (int256 u0) {
-            try DUT.getUtility(x0 / 2, y0 / 2, _as[i], bs[i], ks[i]) returns (
-                int256 u1
-            ) {
+
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
+        try DUT.getUtility(x0, y0) returns (int256 u0) {
+            emit log_named_int("u0", u0);
+            try DUT.getUtility(x0 / 2, y0 / 2) returns (int256 u1) {
                 assertWithinRounding(u0 / 2, u1);
             } catch {}
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+
+    function testUtilityScalingOverT(uint256 t_slice, int256 x0, int256 y0) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testUtilityScaling(x0, y0);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testGetPointScaling(
@@ -128,35 +171,42 @@ contract ProteusProperties is DSTest {
     ) public {
         vm.assume(x0 >= int256(MIN_BALANCE) * 2);
         vm.assume(y0 >= int256(MIN_BALANCE) * 2);
-        checkBoundary(x0, y0);
-        uint256 i = DUT.findSlice(ms, x0, y0);
-        try DUT.getUtility(x0, y0, _as[i], bs[i], ks[i]) returns (int256 u0) {
+        vm.assume(y0/x0 <= int256(MAX_BALANCE_AMOUNT_RATIO));
+        vm.assume(x0/y0 <= int256(MAX_BALANCE_AMOUNT_RATIO));
+
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
+        try DUT.getUtility(x0, y0) returns (int256 u0) {
             if (point) {
                 try
                     DUT.getPointGivenXandUtility(
                         x0 / 2,
-                        u0 / 2,
-                        _as[i],
-                        bs[i],
-                        ks[i]
+                        u0 / 2
                     )
                 returns (int256, int256 y1) {
-                    assertWithinRounding(y0 / 2, y1);
+                  assertWithinRounding(y0 / 2, y1);
                 } catch {}
             } else {
                 try
                     DUT.getPointGivenYandUtility(
                         y0 / 2,
-                        u0 / 2,
-                        _as[i],
-                        bs[i],
-                        ks[i]
+                        u0 / 2
                     )
                 returns (int256 x1, int256) {
                     assertWithinRounding(x0 / 2, x1);
                 } catch {}
+                assertGt(DUT.p_max(), DUT.p_min());
             }
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+
+    function testGetPointScalingOverT(uint256 t_slice, int256 x0, int256 y0, bool point) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testGetPointScaling(x0, y0, point);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testSwapInput(
@@ -168,7 +218,12 @@ contract ProteusProperties is DSTest {
         vm.assume(x0 >= MIN_BALANCE);
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(inputAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
+        
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
         try DUT.swapGivenInputAmount(x0, y0, inputAmount, inputToken) returns (
             uint256 o0
         ) {
@@ -208,6 +263,15 @@ contract ProteusProperties is DSTest {
                 }
             } catch {}
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+
+    function testSwapInputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 inputAmount, bool token) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testSwapInput(x0, y0, inputAmount, token);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testSwapOutput(
@@ -219,9 +283,14 @@ contract ProteusProperties is DSTest {
         vm.assume(x0 >= MIN_BALANCE);
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(outputAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken outputToken = token
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
+        
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
         try
             DUT.swapGivenOutputAmount(x0, y0, outputAmount, outputToken)
         returns (uint256 i0) {
@@ -247,6 +316,8 @@ contract ProteusProperties is DSTest {
                 x1 = x0 + i0;
                 opposite = SpecifiedToken.X;
             }
+            assertGt(DUT.p_max(), DUT.p_min());
+
             try DUT.swapGivenOutputAmount(x1, y1, i0, opposite) returns (
                 uint256 i1
             ) {
@@ -267,8 +338,9 @@ contract ProteusProperties is DSTest {
                         "back and forth swap should result in extra Y"
                     );
                 }
+                assertGt(DUT.p_max(), DUT.p_min());
             } catch (bytes memory error) {
-                if (bytes4(error) == Proteus.BalanceError.selector) {
+                if (bytes4(error) == EvolvingProteus.BalanceError.selector) {
                     assertTrue(
                         x0 < MIN_BALANCE + MIN_OPERATING_AMOUNT ||
                             y0 < MIN_BALANCE + MIN_OPERATING_AMOUNT,
@@ -277,6 +349,15 @@ contract ProteusProperties is DSTest {
                 }
             }
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+
+    function testSwapOutputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 outputAmount, bool token) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testSwapOutput(x0, y0, outputAmount, token);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testDepositOutputWithdrawInput(
@@ -290,9 +371,14 @@ contract ProteusProperties is DSTest {
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(s0 >= MIN_BALANCE);
         vm.assume(mintedAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken depositedToken = token
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
+        
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
         try
             DUT.depositGivenOutputAmount(
                 x0,
@@ -312,6 +398,7 @@ contract ProteusProperties is DSTest {
                 y1 += depositedAmount;
                 x1 = x0;
             }
+            assertGt(DUT.p_max(), DUT.p_min());
             try
                 DUT.withdrawGivenInputAmount(
                     x1,
@@ -326,8 +413,18 @@ contract ProteusProperties is DSTest {
                     depositedAmount,
                     "Depositing and withdrawing liquidity should not decrease value of pool"
                 );
+                assertGt(DUT.p_max(), DUT.p_min());
             } catch {}
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+
+    function testDepositOutputWithdrawInputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 mintedAmount, bool token) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testDepositOutputWithdrawInput(x0, y0, s0, mintedAmount, token);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testDepositInputWithdrawOutput(
@@ -341,6 +438,11 @@ contract ProteusProperties is DSTest {
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(s0 >= MIN_BALANCE);
         vm.assume(depositedAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
+        
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
         SpecifiedToken depositedToken = token
             ? SpecifiedToken.X
             : SpecifiedToken.Y;
@@ -363,6 +465,8 @@ contract ProteusProperties is DSTest {
                 y1 += depositedAmount;
                 x1 = x0;
             }
+            assertGt(DUT.p_max(), DUT.p_min());
+
             try
                 DUT.withdrawGivenOutputAmount(
                     x1,
@@ -377,8 +481,18 @@ contract ProteusProperties is DSTest {
                     mintedAmount,
                     "Depositing and withdrawing liquidity should not decrease value of pool"
                 );
+                assertGt(DUT.p_max(), DUT.p_min());
             } catch {}
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+
+    function testDepositInputWithdrawOutputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 depositedAmount, bool token) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testDepositOutputWithdrawInput(x0, y0, s0, depositedAmount, token);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testSwapDWInput(
@@ -392,8 +506,12 @@ contract ProteusProperties is DSTest {
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(s0 >= MIN_BALANCE);
         vm.assume(inputAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
         try DUT.swapGivenInputAmount(x0, y0, inputAmount, inputToken) returns (uint256 o0) {
 
             uint256 x1;
@@ -415,6 +533,7 @@ contract ProteusProperties is DSTest {
                 x1 = x0 - o0;
                 opposite = SpecifiedToken.X;
             }
+            assertGt(DUT.p_max(), DUT.p_min());
 
             try DUT.depositGivenInputAmount(x1, y1, s0, o0, opposite) returns (uint256 mintedAmount) {
             
@@ -427,6 +546,7 @@ contract ProteusProperties is DSTest {
                     x1 += o0;
                     opposite = SpecifiedToken.Y;
                 }
+                assertGt(DUT.p_max(), DUT.p_min());
 
                 try DUT.withdrawGivenInputAmount(x1, y1, s1, mintedAmount, opposite) returns (uint256 o1) {
                     if (inputToken == SpecifiedToken.X) {
@@ -444,14 +564,26 @@ contract ProteusProperties is DSTest {
                             "Back and forth swap should result in extra Y"
                         );
                     }
+                    assertGt(DUT.p_max(), DUT.p_min());
                 } catch {}
+                assertGt(DUT.p_max(), DUT.p_min());
 
                 
             } catch {}
+            assertGt(DUT.p_max(), DUT.p_min());
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
-     function testSwapDWOutput(
+    function testSwapDWInputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 inputAmount, bool token) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testSwapDWInput(x0, y0, s0, inputAmount, token);
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+
+    function testSwapDWOutput(
         uint256 x0,
         uint256 y0,
         uint256 s0,
@@ -462,7 +594,11 @@ contract ProteusProperties is DSTest {
         vm.assume(y0 >= MIN_BALANCE);
         vm.assume(s0 >= MIN_BALANCE);
         vm.assume(outputAmount >= MIN_OPERATING_AMOUNT);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
         SpecifiedToken outputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
+
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
         
         try DUT.swapGivenOutputAmount(x0, y0, outputAmount, outputToken) returns (uint256 i0) {
 
@@ -485,6 +621,7 @@ contract ProteusProperties is DSTest {
                 x1 = x0 + i0;
                 opposite = SpecifiedToken.X;
             }
+            assertGt(DUT.p_max(), DUT.p_min());
 
             try DUT.withdrawGivenOutputAmount(x1, y1, s0, i0, opposite) returns (uint256 burnedAmount) {
             
@@ -497,6 +634,7 @@ contract ProteusProperties is DSTest {
                     x1 -= i0;
                     opposite = SpecifiedToken.Y;
                 }
+                assertGt(DUT.p_max(), DUT.p_min());
 
                 try DUT.depositGivenOutputAmount(x1, y1, s1, burnedAmount, opposite) returns (uint256 i1) {
                     if (outputToken == SpecifiedToken.X) {
@@ -512,34 +650,29 @@ contract ProteusProperties is DSTest {
                             "Back and forth swap should result in extra Y"
                         );
                     }
+                    assertGt(DUT.p_max(), DUT.p_min());
                 } catch {}
             } catch {}
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
-    function testEdgeSwaps(uint256 x0, uint256 y0, bool token) public {
+    function testSwapDWOutputOverT(uint256 t_slice, uint256 x0, uint256 y0, uint256 s0, uint256 outputAmount, bool token) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
 
-        vm.assume(x0 > MIN_BALANCE && x0 < 1e27);
-        vm.assume(y0 > MIN_BALANCE && y0 < 1e27);
-        checkBoundary(int256(x0), int256(y0));
-
-        SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
-        SpecifiedToken outputToken = token ? SpecifiedToken.Y : SpecifiedToken.X;
-
-        uint256 maxInput = DUT.getSwapMax(int256(x0), int256(y0), token);
-        vm.expectRevert();
-        DUT.swapGivenInputAmount(x0, y0, maxInput, inputToken);
-
-        uint256 maxOutput = (token ? y0 : x0) - MIN_BALANCE + 1;
-        vm.expectRevert();
-        DUT.swapGivenOutputAmount(x0, y0, maxOutput, outputToken);
+        testSwapDWOutput(x0, y0, s0, outputAmount, token);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testSmallInput(uint256 x0, uint256 y0, bool token) public {
 
         vm.assume(x0 > MIN_BALANCE && x0 < MAX_BALANCE);
         vm.assume(y0 > MIN_BALANCE && y0 < MAX_BALANCE);
-        checkBoundary(int256(x0), int256(y0));
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
+
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
 
         SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
         SpecifiedToken outputToken = token ? SpecifiedToken.Y : SpecifiedToken.X;
@@ -547,32 +680,20 @@ contract ProteusProperties is DSTest {
         uint256 minInput = (token ? x0 : y0) / MAX_BALANCE_AMOUNT_RATIO;
         vm.expectRevert();
         DUT.swapGivenInputAmount(x0, y0, minInput, inputToken);
+        assertGt(DUT.p_max(), DUT.p_min());
 
         uint256 minOutput = (token ? y0 : x0) / MAX_BALANCE_AMOUNT_RATIO;
         vm.expectRevert();
         DUT.swapGivenOutputAmount(x0, y0, minOutput, outputToken);
-
+        assertGt(DUT.p_max(), DUT.p_min());
     }
     
-    function testUtilityAlongSliceBoundary(uint256 x, uint8 mIndex) public {
-        vm.assume(x < MAX_BALANCE);
-        vm.assume(x > MIN_BALANCE);
-        uint256 i = mIndex % (ms.length - 1);
-        int256 xi = int256(x);
-        // Make sure we won't overflow
-        unchecked {
-            int256 m = ms[i].toInt() + 1;
-            int256 test = xi * m;
-            if (test / xi != m) return;
-        }
-        int256 yi = ms[i].muli(xi);
-        try DUT.getUtility(xi, yi, _as[i], bs[i], ks[i]) returns (int256 ru) {
-            try
-                DUT.getUtility(xi, yi, _as[i + 1], bs[i + 1], ks[i + 1])
-            returns (int256 lu) {
-                assertWithinRounding(ru, lu);
-            } catch {}
-        } catch {}
+    function testSmallInputOverT(uint256 t_slice, uint256 x0, uint256 y0, bool token) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testSmallInput(x0, y0, token);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testUtilityWithDeltaBalance(
@@ -585,13 +706,13 @@ contract ProteusProperties is DSTest {
             int256 xi,
             int256 yi,
             int256 xf,
-            int256 yf,
-            uint256 i,
-            uint256 j
+            int256 yf
         ) = assumes(x, y, delta, direction);
-        vm.assume(i == j);
-        try DUT.getUtility(xi, yi, _as[i], bs[i], ks[i]) returns (int256 ui) {
-            try DUT.getUtility(xf, yf, _as[j], bs[j], ks[j]) returns (
+                        
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
+        try DUT.getUtility(xi, yi) returns (int256 ui) {
+            try DUT.getUtility(xf, yf) returns (
                 int256 uf
             ) {
                 if (delta < 0) {
@@ -599,70 +720,86 @@ contract ProteusProperties is DSTest {
                 } else {
                     assertLe(ui, uf);
                 }
+                assertGt(DUT.p_max(), DUT.p_min());
             } catch {}
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
     }
+    
+    function testUtilityWithDeltaBalanceOverT(uint256 t_slice, uint256 x, uint256 y, int128 delta, bool direction) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
 
+        testUtilityWithDeltaBalance(x, y, delta, direction);
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+    
     function testGetPointWithDeltaUtility(
         uint256 x,
         uint256 y,
         int128 delta,
         bool direction
     ) public {
-        (int256 xi, int256 yi, uint256 i) = assumeXY(x, y);
-        try DUT.getUtility(xi, yi, _as[i], bs[i], ks[i]) returns (int256 ui) {
+        (int256 xi, int256 yi) = assumeXY(x, y);
+        
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
+        try DUT.getUtility(xi, yi) returns (int256 ui) {
             int256 uf = ui + delta;
             vm.assume(
                 uf * MAX_CHANGE_FACTOR > ui && uf / MAX_CHANGE_FACTOR < ui
             );
             if (direction) {
                 try
-                    DUT.getPointGivenXandUtility(xi, ui, _as[i], bs[i], ks[i])
+                    DUT.getPointGivenXandUtility(xi, ui)
                 returns (int256, int256 p0y) {
                     try
                         DUT.getPointGivenXandUtility(
                             xi,
-                            ui + delta,
-                            _as[i],
-                            bs[i],
-                            ks[i]
+                            ui + delta
                         )
                     returns (int256 p1x, int256 p1y) {
-                        checkBoundary(p1x, p1y);
-                        uint256 j = DUT.findSlice(ms, p1x, p1y);
-                        vm.assume(i == j);
+                        p1x;
                         if (delta < 0) {
                             assertLe(p1y, p0y);
                         } else {
                             assertGe(p1y, p0y);
                         }
+                        assertGt(DUT.p_max(), DUT.p_min());
                     } catch {}
                 } catch {}
+                assertGt(DUT.p_max(), DUT.p_min());
             } else {
                 try
-                    DUT.getPointGivenYandUtility(yi, ui, _as[i], bs[i], ks[i])
+                    DUT.getPointGivenYandUtility(yi, ui)
                 returns (int256 p0x, int256) {
                     try
                         DUT.getPointGivenYandUtility(
                             yi,
-                            ui + delta,
-                            _as[i],
-                            bs[i],
-                            ks[i]
+                            ui + delta
                         )
                     returns (int256 p1x, int256 p1y) {
-                        checkBoundary(p1x, p1y);
-                        uint256 j = DUT.findSlice(ms, p1x, p1y);
-                        vm.assume(i == j);
+                        p1y;
                         if (delta < 0) {
                             assertLe(p1x, p0x);
                         } else {
                             assertGe(p1x, p0x);
                         }
+                        assertGt(DUT.p_max(), DUT.p_min());
                     } catch {}
                 } catch {}
+                assertGt(DUT.p_max(), DUT.p_min());
             }
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+
+    function testGetPointWithDeltaUtilityOverT(uint256 t_slice, uint256 x, uint256 y, int128 delta, bool direction) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testGetPointWithDeltaUtility(x, y, delta, direction);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testGetPointWithDeltaBalance(
@@ -675,23 +812,20 @@ contract ProteusProperties is DSTest {
             int256 xi,
             int256 yi,
             int256 xf,
-            int256 yf,
-            uint256 i,
-            uint256 j
+            int256 yf
         ) = assumes(x, y, delta, direction);
-        vm.assume(i == j);
-        try DUT.getUtility(xi, yi, _as[i], bs[i], ks[i]) returns (int256 ui) {
+
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
+        try DUT.getUtility(xi, yi) returns (int256 ui) {
             if (direction) {
                 try
-                    DUT.getPointGivenXandUtility(xi, ui, _as[i], bs[i], ks[i])
+                    DUT.getPointGivenXandUtility(xi, ui)
                 returns (int256, int256 p0y) {
                     try
                         DUT.getPointGivenXandUtility(
                             xf,
-                            ui,
-                            _as[i],
-                            bs[i],
-                            ks[i]
+                            ui
                         )
                     returns (int256, int256 p1y) {
                         // if x goes down and utility is constant, y should increase
@@ -700,19 +834,18 @@ contract ProteusProperties is DSTest {
                         } else {
                             assertLe(p1y, p0y);
                         }
+                        assertGt(DUT.p_max(), DUT.p_min());
                     } catch {}
                 } catch {}
+                assertGt(DUT.p_max(), DUT.p_min());
             } else {
                 try
-                    DUT.getPointGivenYandUtility(yi, ui, _as[i], bs[i], ks[i])
+                    DUT.getPointGivenYandUtility(yi, ui)
                 returns (int256 p0x, int256) {
                     try
                         DUT.getPointGivenYandUtility(
                             yf,
-                            ui,
-                            _as[i],
-                            bs[i],
-                            ks[i]
+                            ui
                         )
                     returns (int256 p1x, int256) {
                         // if y goes down and utility is constant, x should increase
@@ -721,63 +854,66 @@ contract ProteusProperties is DSTest {
                         } else {
                             assertLe(p1x, p0x);
                         }
+                        assertGt(DUT.p_max(), DUT.p_min());
                     } catch {}
                 } catch {}
+                assertGt(DUT.p_max(), DUT.p_min());
             }
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+    
+    function testGetPointWithDeltaBalanceOverT(uint256 t_slice, uint256 x, uint256 y, int128 delta, bool direction) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testGetPointWithDeltaBalance(x, y, delta, direction);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
     function testRecovery(uint256 x, uint256 y) public {
         vm.assume(x > type(uint64).max);
         vm.assume(y > type(uint64).max);
-        (int256 xi, int256 yi, uint256 si) = assumeXY(x, y);
-        try DUT.getUtility(xi, yi, _as[si], bs[si], ks[si]) returns (
+
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
+        (int256 xi, int256 yi) = assumeXY(x, y);
+        try DUT.getUtility(xi, yi) returns (
             int256 ui
         ) {
             try
-                DUT.getPointGivenXandUtility(xi, ui, _as[si], bs[si], ks[si])
+                DUT.getPointGivenXandUtility(xi, ui)
             returns (int256, int256 yf) {
                 try
                     DUT.getPointGivenYandUtility(
                         yi,
-                        ui,
-                        _as[si],
-                        bs[si],
-                        ks[si]
+                        ui
                     )
                 returns (int256 xf, int256) {
+                    assertGt(DUT.p_max(), DUT.p_min());
                     try
-                        DUT.getUtility(xf, yf, _as[si], bs[si], ks[si])
+                        DUT.getUtility(xf, yf)
                     returns (int256 uf) {
                         assertWithinRounding(ui, uf);
+                        assertGt(DUT.p_max(), DUT.p_min());
                     } catch {}
+                    assertGt(DUT.p_max(), DUT.p_min());
                 } catch {}
             } catch {}
+            assertGt(DUT.p_max(), DUT.p_min());
         } catch {}
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
-    function testFindSliceAndIsPointInSlice(int256 x, int256 y) public {
-        vm.assume(x > 10**12 && y > 10**12);
-        int256 t0 = y / x;
-        int256 t1 = x / y;
-        if (t0 < type(int64).max && t1 < type(int64).max) {
-            int128 balanceRatio = ABDKMath64x64.divi(y, x);
-            if (MIN_M <= balanceRatio && balanceRatio <= MAX_M) {
-                uint256 i = DUT.findSlice(ms, x, y);
-                (int128 mLeft, int128 mRight) = DUT.getSliceBoundaries(ms, i);
-                int128 m = y.divi(x);
-                assertLe(mRight, m);
-                assertGe(mLeft, m);
-                bool notInSlice = DUT.pointIsNotInSlice(ms, i, x, y);
-                assertTrue(notInSlice == false);
-            } else {
-                vm.expectRevert(Proteus.BoundaryError.selector);
-                DUT.findSlice(ms, x, y);
-            }
-        }
+    function testRecoveryOverT(uint256 t_slice, uint256 x, uint256 y) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testRecovery(x, y);
+        assertGt(DUT.p_max(), DUT.p_min());
     }
 
-    function testSqrt(int256 a, int256 b) public {
+  function testSqrt(int256 a, int256 b) public {
         vm.assume(a > 0 && b > 0);
         vm.assume(type(int256).max / a > a);
         int256 aSquared = a * a;
@@ -802,22 +938,63 @@ contract ProteusProperties is DSTest {
         );
         assertEq(sqrtPlusOne, a + 1);
     }
+    
+    function testSqrtOverT(uint256 t_slice, int256 a, int256 b) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testSqrt(a,b);
+    }
+    
+    function testEdgeSwaps(uint256 x0, uint256 y0, bool token) public {
+
+        vm.assume(x0 > MIN_BALANCE && x0 < 1e27);
+        vm.assume(y0 > MIN_BALANCE && y0 < 1e27);
+        vm.assume(y0/x0 <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x0/y0 <= MAX_BALANCE_AMOUNT_RATIO);
+
+        vm.warp(block.timestamp + EVOLUTION_START_TIME + 1);
+
+        SpecifiedToken inputToken = token ? SpecifiedToken.X : SpecifiedToken.Y;
+        SpecifiedToken outputToken = token ? SpecifiedToken.Y : SpecifiedToken.X;
+
+        uint256 maxInput = DUT.getSwapMax(int256(x0), int256(y0), token);
+
+        emit log_named_uint("maxInput", maxInput);
+
+        //token ? assertTrue((maxInput/10) > x0, "max X input doesn't match") : assertTrue((maxInput + y0) > y0, "max Y input doesn't match");
+        vm.expectRevert();
+        DUT.swapGivenInputAmount(x0, y0, maxInput, inputToken);
+        assertGt(DUT.p_max(), DUT.p_min());
+
+        uint256 maxOutput = (token ? y0 : x0) - MIN_BALANCE + 1;
+        vm.expectRevert();
+        DUT.swapGivenOutputAmount(x0, y0, maxOutput, outputToken);
+        assertGt(DUT.p_max(), DUT.p_min());
+    }
+
+    function testEdgeSwapsOverT(uint256 t_slice, uint256 x0, uint256 y0, bool token) public {
+        t_slice = bound(t_slice, 1, T_DURATION);
+        vm.warp(t_slice);
+
+        testEdgeSwaps(x0, y0, token);
+    }
 
     function assumeXY(uint256 x, uint256 y)
         private
         returns (
             int256 xi,
-            int256 yi,
-            uint256 si
+            int256 yi
         )
     {
         vm.assume(x < MAX_BALANCE && y < MAX_BALANCE);
         vm.assume(x > MIN_BALANCE && y > MIN_BALANCE);
+        vm.assume(y/x <= MAX_BALANCE_AMOUNT_RATIO);
+        vm.assume(x/y <= MAX_BALANCE_AMOUNT_RATIO);
+        
         xi = int256(x);
         yi = int256(y);
 
-        checkBoundary(xi, yi);
-        si = DUT.findSlice(ms, xi, yi);
     }
 
     function assumes(
@@ -831,12 +1008,10 @@ contract ProteusProperties is DSTest {
             int256 xi,
             int256 yi,
             int256 xf,
-            int256 yf,
-            uint256 si,
-            uint256 sf
+            int256 yf
         )
     {
-        (xi, yi, si) = assumeXY(x, y);
+        (xi, yi) = assumeXY(x, y);
 
         if (direction) {
             yf = yi;
@@ -876,21 +1051,10 @@ contract ProteusProperties is DSTest {
             );
         }
 
-        checkBoundary(xf, yf);
-        sf = DUT.findSlice(ms, xf, yf);
-    }
-
-    function checkBoundary(int256 x, int256 y) internal {
-        vm.assume(x > int256(MIN_BALANCE) && y > int256(MIN_BALANCE));
-        int256 t0 = y / x;
-        int256 t1 = x / y;
-        vm.assume(t0 < type(int64).max && t1 < type(int64).max);
-        int128 balanceRatio = ABDKMath64x64.divi(y, x);
-        vm.assume(MIN_M < balanceRatio && balanceRatio < MAX_M);
     }
 
     function assertWithinRounding(int256 a0, int256 a1) internal {
-        assertLe((a0) - (a0 / BASE_FEE) - FIXED_FEE, a1);
-        assertGe((a0) + (a0 / BASE_FEE) + FIXED_FEE, a1);
+        assertLe((a0) - (a0 / BASE_FEE) - FIXED_FEE, a1, "not within less than rounding");
+        assertGe((a0) + (a0 / BASE_FEE) + FIXED_FEE, a1, "not within greater than rounding");
     }
 }

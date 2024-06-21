@@ -137,6 +137,12 @@ contract Proteus is ILiquidityPoolImplementation, Slices {
                 yBalance < INT_MAX &&
                 totalSupply < INT_MAX
         );
+
+        _checkAmountWithBalance(
+            (depositedToken == SpecifiedToken.X) ? xBalance : yBalance,
+            depositedAmount
+        );
+
         int256 result = _reserveTokenSpecified(
             depositedToken,
             int256(depositedAmount),
@@ -377,7 +383,16 @@ contract Proteus is ILiquidityPoolImplementation, Slices {
         uint256 result = Math.mulDiv(uint256(uf), uint256(si), uint256(ui));
         require(result < INT_MAX);
         int256 sf = int256(result);
+        require(sf >= MIN_BALANCE); 
+
         computedAmount = _applyFeeByRounding(sf - si, feeDirection);
+
+        // reserve balances check based on the specified amount
+        if (specifiedToken == SpecifiedToken.X) {
+            _checkBalances(xi + specifiedAmount, yf);
+        } else {
+            _checkBalances(xf, yi + specifiedAmount);
+        }
     }
 
     /**
@@ -761,14 +776,13 @@ contract Proteus is ILiquidityPoolImplementation, Slices {
 
     /**
      * @dev The pool's balances of the x reserve and y reserve tokens must be
-     *  greater than the MIN_BALANCE
+     *  greater than or equal to the MIN_BALANCE
      * @dev The pool's ratio of y to x must be within the interval
      *  [MIN_M, MAX_M)
      */
     function _checkBalances(int256 x, int256 y) private pure {
-        if (x < MIN_BALANCE || y < MIN_BALANCE) {
-            revert BalanceError();
-        }
+        if (x < MIN_BALANCE || y < MIN_BALANCE) revert BalanceError();
+
         int128 finalBalanceRatio = y.divi(x);
         if (finalBalanceRatio < MIN_M) {
             revert BoundaryError();
